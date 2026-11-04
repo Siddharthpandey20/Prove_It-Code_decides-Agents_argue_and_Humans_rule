@@ -1,0 +1,5 @@
+work/
+.proveit/
+__pycache__/
+*.pyc
+.env

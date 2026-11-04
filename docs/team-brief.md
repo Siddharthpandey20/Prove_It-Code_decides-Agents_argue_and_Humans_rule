@@ -120,12 +120,14 @@ Done and tested (on a private Switch 0.31.0 server + Mattermost, driven by a rea
 - Judge rules for code execution, denial of service, crash, info leak.
 - `python -m proveit check|run|trace|list|show|tally|submit`.
 - Template for Console (Reproducer + Skeptic + group + rooms + link + roles + doc + kickoff), server-validated.
+- Claude Code given the Reproducer's template instructions (headless dry run) ran only `python -m proveit check R-001` and posted the correct verdict, call stack and evidence paths.
 - 17 tests (unit + sandbox integration), plus `scripts/e2e.py`, which passes against a fresh Switch server.
 - Verified on the server: the template's room half (group, rooms, link, roles, doc) provisions with Intake in both rooms; Intake ignores commands sent by other agents (tested with a rogue agent).
 
 Still to do (team):
 - [ ] Deploy the template in Switch Console on the demo machine and watch Claude Code / Codex run the commands (needs a Codex login; template falls back to OpenCode or Claude).
 - [ ] Sign up for Switch Trust (free plan), create a guardrails policy, paste endpoint / policy ID / key on the server Home page, and record the blocked injection.
+- [ ] **Run `claude auth login` on the demo machine before Nov 7**: the current Claude Code sign-in ends between Nov 7 and Nov 10.
 - [ ] Record the video; write the blog post; #HowISwitch clip.
 - [ ] Track 03: as of Nov 5, 04:00 IST every open `hackathon` issue on sandbox-quantum/switch is already assigned. Watch for new ones; if one appears, comment with a plan tagging the maintainer named in CONTRIBUTING.md.
 - [ ] Edit and publish `docs/blog-draft.md` (Best Blog).

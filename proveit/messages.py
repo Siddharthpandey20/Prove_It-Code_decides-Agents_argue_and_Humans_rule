@@ -40,6 +40,11 @@ def ask_for_proof(ticket_id, ticket):
     return "\n\n".join(lines)
 
 
+def foreign_reply(ticket_id):
+    return ("Only the person who reported %s can add to it in this thread, so your message was not added to the "
+            "report. If you have your own proof, post it as a new report in this channel." % ticket_id)
+
+
 def invalid_proof(ticket_id, problem):
     return ("**%s: the proof was not run.** Reason: %s.\n\n%s\n\nReply in this thread with a corrected proof.\n\n%s" %
             (ticket_id, poc.PROBLEMS.get(problem, problem), POC_FORMAT_HELP, scope_line()))
@@ -154,6 +159,11 @@ def host_path(path):
     """A path for maintainers to open on the host, with the home folder shortened to ~."""
     text, home = str(path), str(Path.home())
     return "~" + text[len(home):] if text.startswith(home) else text
+
+
+def foreign_reply_notice(ticket_id, count):
+    return ("**%s:** a reply from someone other than the reporter was ignored (%d so far). It did not change the "
+            "report or its proof; maintainers can read it in the ticket's private folder on the host." % (ticket_id, count))
 
 
 def quarantine_notice(record, mention):

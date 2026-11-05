@@ -47,9 +47,11 @@ Finding numbers (F1 to F31) refer to the assessment.
 
 ## D. Only the reporter completes their report (F9)
 
-- [ ] D1 In a reporter's thread, only the original reporter's replies change the ticket (decision D-008). Others get a notice and nothing changes.
-- [ ] D2 Ignored contributions are recorded privately (who, when, a hash) and counted in the ticket as `foreign_replies`, so maintainers can see that someone else tried.
-- [ ] D3 Tests: Bob's reply leaves Alice's ticket unchanged; Alice's reply still works.
+- [x] D1 In a reporter's thread, only the original reporter's replies change the ticket (decision D-008). Others get a notice and nothing changes.
+- [x] D2 Ignored contributions are recorded privately (who, when, a hash) and counted in the ticket as `foreign_replies`, so maintainers can see that someone else tried.
+- [x] D3 Tests: Bob's reply leaves Alice's ticket unchanged; Alice's reply still works.
+
+  Evidence: `tests/test_intake.py` `Ownership` (Bob's proof ignored: status stays `awaiting_poc`, no payload, report unchanged, `foreign.json` has sender and SHA-256, triage sees only a count; Alice's reply still moves it to triage; a stranger in a triaged thread changes nothing). D-008 recorded in `context.md` (group K).
 
 ## E. Intake does not lose or repeat work (F21, F22, F23, F24)
 
@@ -61,10 +63,12 @@ Finding numbers (F1 to F31) refer to the assessment.
 
 ## F. Safe concurrent writes (F25)
 
-- [ ] F1 Temporary files have unique names.
-- [ ] F2 Every load-modify-save of a ticket holds a per-ticket lock (works on macOS, Linux and Windows).
-- [ ] F3 Run files and ticket ids are created exclusively, so two writers never share a number.
-- [ ] F4 Test: two simultaneous checks on one ticket both end up recorded; two simultaneous reports get different ids.
+- [x] F1 Temporary files have unique names.
+- [x] F2 Every load-modify-save of a ticket holds a per-ticket lock (works on macOS, Linux and Windows).
+- [x] F3 Run files and ticket ids are created exclusively, so two writers never share a number.
+- [x] F4 Test: two simultaneous checks on one ticket both end up recorded; two simultaneous reports get different ids.
+
+  Evidence: `tests/test_store.py` (5 concurrent checks all recorded with distinct numbers and no `.tmp` left; 8 concurrent reports get 8 ids; 4 threads x 20 updates lose none; a lock held by another process makes this one wait; locking a missing ticket creates nothing). 124 tests OK with Docker, rehearsal twice identical.
 
 ## G. Builds and tests everywhere (F10, F11, F12, F20)
 

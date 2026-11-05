@@ -25,7 +25,12 @@ def check(ticket_id, build="vulnerable", actor="human", by="cli", entry_point=No
     command = "check" if build == "vulnerable" else "check_patched"
     _check_allowed(record, command, actor)
     entry = entry_point or record.get("entry_point")
-    run = sandbox.run_poc(entry, store.payload(ticket_id), build)
+    run = sandbox.run_poc(entry, store.payload(ticket_id), build)  # minutes at most; not under the lock
+    with store.ticket_lock(ticket_id):
+        return _record_check(ticket_id, build, command, actor, by, run)
+
+
+def _record_check(ticket_id, build, command, actor, by, run):
     path = store.save_run(ticket_id, run)
     record = store.load(ticket_id)
     record["runs"].append({"build": build, "file": path, "at": store.now(), "by": by, "actor": actor,
@@ -51,6 +56,11 @@ def clean_reason(text):
 
 
 def concur(ticket_id, actor, by):
+    with store.ticket_lock(ticket_id):
+        return _concur(ticket_id, actor, by)
+
+
+def _concur(ticket_id, actor, by):
     record = store.load(ticket_id)
     if latest_run(record, "vulnerable") is None:
         raise states.IllegalTransition("nothing to concur with: no check has run on %s" % ticket_id)
@@ -62,6 +72,11 @@ def concur(ticket_id, actor, by):
 
 
 def dispute(ticket_id, reason, actor, by):
+    with store.ticket_lock(ticket_id):
+        return _dispute(ticket_id, reason, actor, by)
+
+
+def _dispute(ticket_id, reason, actor, by):
     reason = clean_reason(reason)
     if not reason:
         raise states.IllegalTransition("a dispute needs a reason")
@@ -75,6 +90,11 @@ def dispute(ticket_id, reason, actor, by):
 
 
 def override(ticket_id, actor, by, note=""):
+    with store.ticket_lock(ticket_id):
+        return _override(ticket_id, actor, by, note)
+
+
+def _override(ticket_id, actor, by, note=""):
     record = store.load(ticket_id)
     run = latest_run(record, "vulnerable")
     target = judge.status_for(run) if run else None
@@ -110,6 +130,11 @@ def review_problem(record):
 
 
 def decide(ticket_id, verdict, actor, by, note=""):
+    with store.ticket_lock(ticket_id):
+        return _decide(ticket_id, verdict, actor, by, note)
+
+
+def _decide(ticket_id, verdict, actor, by, note=""):
     """escalate or close."""
     record = store.load(ticket_id)
     if verdict == "escalate" and record["status"] in states.CHECKED:
@@ -121,6 +146,11 @@ def decide(ticket_id, verdict, actor, by, note=""):
 
 
 def record_cost(ticket_id, usd, source, actor, by):
+    with store.ticket_lock(ticket_id):
+        return _record_cost(ticket_id, usd, source, actor, by)
+
+
+def _record_cost(ticket_id, usd, source, actor, by):
     """A human records agent cost from Switch ROI or a provider dashboard. Never estimated."""
     if actor != "human":
         raise states.IllegalTransition("only humans may record cost")

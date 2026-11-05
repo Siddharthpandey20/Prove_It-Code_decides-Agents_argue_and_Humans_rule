@@ -286,13 +286,15 @@ class Intake:
         result = screen.screen(text)
         ticket = reports.parse(text)
         record = store.create({}, text, source=self.source)
-        store.save_private_json(record["id"], "contact.json",
-                                {"intake_thread": thread, "reporter": payload.get("sender_name", "unknown")})
-        fill(record, ticket)
-        if result.blocked:
-            self.quarantine(record, result, thread, "receive")
-            return
-        self.route(record, ticket, thread, "receive")
+        with store.ticket_lock(record["id"]):
+            store.save_private_json(record["id"], "contact.json",
+                                    {"intake_thread": thread, "reporter": payload.get("sender_name", "unknown"),
+                                     "message_id": payload.get("message_id")})
+            fill(record, ticket)
+            if result.blocked:
+                self.quarantine(record, result, thread, "receive")
+                return
+            self.route(record, ticket, thread, "receive")
 
     def quarantine(self, record, result, thread, command):
         record["screen_rules"] = sorted({f["rule"] for f in result.findings})
@@ -315,7 +317,16 @@ class Intake:
                 threading.Thread(target=self.run_auto_check, args=(record["id"],), daemon=True).start()
 
     def followup(self, record, payload):
-        thread = store.load_private_json(record["id"], "contact.json").get("intake_thread")
+        with store.ticket_lock(record["id"]):
+            self._followup(store.load(record["id"]), payload)
+
+    def _followup(self, record, payload):
+        contact = store.load_private_json(record["id"], "contact.json")
+        thread = contact.get("intake_thread")
+        sender = payload.get("sender_name", "")
+        if sender.lower() != str(contact.get("reporter", "")).lower():
+            self.foreign_reply(record, payload, thread)
+            return
         if record["status"] not in ("awaiting_poc", "invalid_proof"):
             self.intake.post("%s is %s. A maintainer will reply in this thread." % (
                 record["id"], record["status"].replace("_", " ")), thread)
@@ -329,6 +340,24 @@ class Intake:
             self.quarantine(record, result, thread, "followup")
             return
         self.route(record, merged, thread, "followup")
+
+    def foreign_reply(self, record, payload, thread):
+        """Decision D-008: only the original reporter completes a report. Someone else's reply in the
+        thread changes nothing; it is kept privately for maintainers and counted in the ticket."""
+        import hashlib
+        text = payload.get("body", "")
+        foreign = store.load_private_json(record["id"], "foreign.json") or {"replies": []}
+        foreign["replies"].append({"sender": payload.get("sender_name", "unknown"), "message_id": payload.get("message_id"),
+                                   "at": store.now(), "sha256": hashlib.sha256(text.encode("utf-8", "replace")).hexdigest(),
+                                   "text": text})
+        store.save_private_json(record["id"], "foreign.json", foreign)
+        with store.ticket_lock(record["id"]):
+            fresh = store.load(record["id"])
+            fresh["foreign_replies"] = len(foreign["replies"])
+            store.event(fresh, "foreign_reply_ignored", "intake")
+            store.save(fresh)
+        self.intake.post(messages.foreign_reply(record["id"]), thread)
+        self.triage.post(messages.foreign_reply_notice(record["id"], len(foreign["replies"])))
 
     def run_auto_check(self, ticket_id):
         """Developer/test mode only: Intake runs the vulnerable-build check itself, labelled as such."""
@@ -436,8 +465,10 @@ class Intake:
         self.triage.post("```\n%s\n```" % evidence.text(evidence.pack(record)), thread)
 
     def do_release(self, record, who, note, thread):
-        ticket = ticket_from_record(record)
-        self.route(record, ticket, self.reporter_thread(record), "release", actor="human", by=who)
+        with store.ticket_lock(record["id"]):
+            record = store.load(record["id"])
+            ticket = ticket_from_record(record)
+            self.route(record, ticket, self.reporter_thread(record), "release", actor="human", by=who)
         self.triage.post("%s released by %s; it is now %s." % (record["id"], who, store.load(record["id"])["status"].replace("_", " ")), thread)
 
     def do_override(self, record, who, note, thread):

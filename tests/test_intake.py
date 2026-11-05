@@ -42,6 +42,7 @@ class Forwarding(WorkDirTest):
         self.assertEqual(store.payload(record["id"]), "a: 1\n")
         self.assertIn("**Ticket R-001**", agent.triage.text())
 
+
     def test_injection_fixture_is_quarantined(self):
         agent = self.make_intake()
         self.report(agent, replay("04-injection-attempt.md"))
@@ -71,6 +72,48 @@ class Forwarding(WorkDirTest):
         visible = json.dumps(record) + agent.triage.text()
         self.assertNotIn("SECRET-TITLE-XYZ", visible)
         self.assertNotIn("reporter-NAME-QQQ", visible)
+
+
+
+class Ownership(WorkDirTest):
+    """Decision D-008: only the original reporter completes their report."""
+
+    def test_someone_else_cannot_supply_the_proof(self):
+        # The case the assessment found: Bob's payload moved Alice's waiting report into triage.
+        agent = self.make_intake()
+        root = self.report(agent, replay("02-slop-safe-load-rce.md"), sender="alice")
+        tid = store.all_tickets()[-1]["id"]
+        self.assertEqual(store.load(tid)["status"], "awaiting_poc")
+        self.reply(agent, root, replay("02-slop-safe-load-rce.followup.md"), sender="bob")
+        record = store.load(tid)
+        self.assertEqual(record["status"], "awaiting_poc")
+        self.assertEqual(store.payload(tid), "")
+        self.assertEqual(record["foreign_replies"], 1)
+        self.assertIn("foreign_reply_ignored", [e["what"] for e in record["timeline"]])
+        self.assertEqual(store.private_path(tid, "report.md").read_text(encoding="utf-8"),
+                         replay("02-slop-safe-load-rce.md"))  # Bob's text was not appended to Alice's report
+        foreign = store.load_private_json(tid, "foreign.json")["replies"]
+        self.assertEqual((foreign[0]["sender"], len(foreign[0]["sha256"])), ("bob", 64))
+        self.assertIn("Only the person who reported %s can add to it" % tid, agent.intake.posts[-1][0])
+        self.assertIn("a reply from someone other than the reporter was ignored (1 so far)", agent.triage.text())
+        self.assertNotIn("bob", agent.triage.text())  # triage sees a count, never the name
+
+    def test_the_reporter_still_can(self):
+        agent = self.make_intake()
+        root = self.report(agent, replay("02-slop-safe-load-rce.md"), sender="Alice")
+        tid = store.all_tickets()[-1]["id"]
+        self.reply(agent, root, replay("02-slop-safe-load-rce.followup.md"), sender="alice")
+        self.assertEqual(store.load(tid)["status"], "in_triage")
+        self.assertNotIn("foreign_replies", store.load(tid))
+
+    def test_someone_else_in_a_triaged_thread_changes_nothing(self):
+        agent = self.make_intake()
+        root = self.report(agent, VALID, sender="alice")
+        tid = store.all_tickets()[-1]["id"]
+        before = store.load(tid)["entry_point"]
+        self.reply(agent, root, "Entry point: yaml.safe_load\n\n```yaml\nb: 2\n```", sender="mallory")
+        self.assertEqual(store.load(tid)["entry_point"], before)
+        self.assertEqual(store.load(tid)["foreign_replies"], 1)
 
 
 class RoomCommands(WorkDirTest):

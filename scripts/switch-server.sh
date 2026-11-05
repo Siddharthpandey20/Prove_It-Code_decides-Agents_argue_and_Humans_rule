@@ -39,6 +39,11 @@ case "${1:-up}" in
       rm -f .env.bak
     fi
     compose up -d
+    setup_exit="$(docker wait "${PROJECT}-setup-1")"
+    if [ "$setup_exit" != 0 ]; then
+      echo "Switch setup failed (exit $setup_exit)" >&2
+      exit 1
+    fi
     echo "Waiting for Switch on http://127.0.0.1:18000 ..."
     for _ in $(seq 1 90); do
       if curl -fs http://127.0.0.1:18000/health >/dev/null 2>&1; then break; fi

@@ -61,6 +61,7 @@ def console_env_candidates():
     for root in roots:
         if root.exists():
             found.extend(root.glob("*/local-switch-server/.env"))
+            found.extend(root.glob("*/local-switch-server/native/run/switch-core.env"))
     return found
 
 
@@ -94,7 +95,7 @@ def cmd_setup(args):
                      "(Add a server > Run a server on this computer), or pass --env-file.")
         env_file = str(candidates[0])
     env = read_env(env_file)
-    api_url = args.api_url or "http://127.0.0.1:%s" % env.get("API_HOST_PORT", "8000")
+    api_url = args.api_url or "http://127.0.0.1:%s" % env.get("API_HOST_PORT", env.get("SERVER_PORT", "8000"))
     token = env.get("AGENT_REGISTRATION_TOKEN")
     if not token:
         sys.exit("%s has no AGENT_REGISTRATION_TOKEN" % env_file)

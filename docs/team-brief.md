@@ -13,7 +13,7 @@ Repo: https://github.com/akhilll0305/team-pikachu-switch-ai
 
 A reporter posts a security report in a Switch room. Our own Intake agent screens it for prompt injection and demands a runnable proof of concept. The PoC runs in a no-network sandbox against the vulnerable and patched versions of the library. A Reproducer agent (Claude Code) reports the evidence, a Skeptic agent (Codex) tries to disprove it, and a maintainer makes the final call with one message. The verdict goes back to the reporter's thread.
 
-**Status (Nov 5, early morning):** working end to end on a real Switch server with Mattermost. 17 tests pass. See section 9.
+**Status (Nov 5):** working end to end on a real Switch server with Mattermost. 18 tests pass, including an Apple silicon Mac run. The live Console demo still needs Claude Code signed in. See section 9.
 
 ---
 
@@ -94,7 +94,7 @@ Prove It's angle: small teams, reporter in the loop (the reporter pays the cost 
 
 ## 7. What we learned while building (useful for teammates)
 
-- Switch Console keeps its local server's settings in `<app data>/<Console>/local-switch-server/.env` (registration token, Gateway admin login, ports). `python -m proveit.intake setup` finds it automatically.
+- Switch Console keeps local server settings in either `<app data>/<Console>/local-switch-server/.env` or `<app data>/<Console>/local-switch-server/native/run/switch-core.env` (registration token, Gateway admin login, ports). `python -m proveit.intake setup` finds either format automatically.
 - A custom agent registers at `POST /agents` with the registration token (`connector_type: custom`). New agents answer only their owner; Intake is opened with `PUT /gateway/agents/{id}/addressing-policy {"policy": null}`.
 - `POST /agents/{id}/message` cannot reply in a thread; `post_message` can, but needs a connection id bound to the room. So Intake holds one connection per room.
 - The latest published Switch server is 0.31.0 (`ghcr.io/sandbox-quantum/switch-core`).
@@ -121,13 +121,15 @@ Done and tested (on a private Switch 0.31.0 server + Mattermost, driven by a rea
 - `python -m proveit check|run|trace|list|show|tally|submit`.
 - Template for Console (Reproducer + Skeptic + group + rooms + link + roles + doc + kickoff), server-validated.
 - Claude Code given the Reproducer's template instructions (headless dry run) ran only `python -m proveit check R-001` and posted the correct verdict, call stack and evidence paths.
-- 17 tests (unit + sandbox integration), plus `scripts/e2e.py`, which passes against a fresh Switch server.
+- 18 tests (unit + sandbox integration), plus `scripts/e2e.py`, which passes against a fresh Switch server.
 - Verified on the server: the template's room half (group, rooms, link, roles, doc) provisions with Intake in both rooms; Intake ignores commands sent by other agents (tested with a rogue agent).
+- Rechecked on an Apple silicon Mac on Nov 5 with Colima: both PyYAML images build, all 18 tests pass without skips, and the private Switch + Mattermost end-to-end replay passes for all four reports. The ARM source build and Docker VM temporary-mount issues found during this check are fixed in the repo.
+- Switch Console's native local server is running on the demo Mac; Intake is registered, and the Prove It template is imported. The Console setup command now discovers the native server automatically.
 
 Still to do (team):
-- [ ] Deploy the template in Switch Console on the demo machine and watch Claude Code / Codex run the commands (needs a Codex login; template falls back to OpenCode or Claude).
+- [ ] Deploy the template in Switch Console on the demo machine and watch Claude Code / Codex run the commands (Claude needs sign-in on this Mac; Codex is signed in).
 - [ ] Sign up for Switch Trust (free plan), create a guardrails policy, paste endpoint / policy ID / key on the server Home page, and record the blocked injection.
-- [ ] **Run `claude auth login` on the demo machine before Nov 7**: the current Claude Code sign-in ends between Nov 7 and Nov 10.
+- [ ] **Run `claude auth login` on the demo machine before Nov 7**: `claude auth status` on this Mac reported `loggedIn: false` on Nov 5. Codex is signed in.
 - [ ] Record the video; write the blog post; #HowISwitch clip.
 - [ ] Track 03: as of Nov 5, 04:00 IST every open `hackathon` issue on sandbox-quantum/switch is already assigned. Watch for new ones; if one appears, comment with a plan tagging the maintainer named in CONTRIBUTING.md.
 - [ ] Edit and publish `docs/blog-draft.md` (Best Blog).

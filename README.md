@@ -113,7 +113,7 @@ E2E PASSED
 ### Tests
 
 ```sh
-python -m unittest discover -s tests -v   # 17 tests: parsing, screening, every replay through the real sandbox,
+python -m unittest discover -s tests -v   # 18 tests: parsing, screening, Console discovery, every replay through the real sandbox,
                                           # no network, no host secrets, read-only, memory cap, forged records
 ```
 

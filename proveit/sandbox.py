@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from .config import SANDBOX_LIMITS, TARGET, TARGET_DIR
+from .config import REPO_ROOT, SANDBOX_LIMITS, TARGET, TARGET_DIR
 
 
 class SandboxError(RuntimeError):
@@ -53,7 +53,9 @@ def run_poc(poc_code, build_name="vulnerable"):
         build(build_name)
     nonce = secrets.token_hex(16)
     limits = SANDBOX_LIMITS
-    with tempfile.TemporaryDirectory(prefix="proveit-") as tmp:
+    temp_root = REPO_ROOT / ".proveit"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="proveit-", dir=temp_root) as tmp:
         poc_dir = Path(tmp)
         (poc_dir / "poc.py").write_text(poc_code, encoding="utf-8")
         name = "proveit-run-%s" % nonce[:12]

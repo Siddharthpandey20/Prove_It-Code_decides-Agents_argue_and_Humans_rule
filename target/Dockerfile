@@ -10,8 +10,10 @@
 FROM python:3.9-slim
 
 ARG PYYAML_VERSION
+# PyYAML 5.4 has no ARM64 wheel and its source build needs Cython 0.x.
 RUN test -n "$PYYAML_VERSION" \
-    && pip install --no-cache-dir --disable-pip-version-check "pyyaml==${PYYAML_VERSION}" \
+    && pip install --no-cache-dir --disable-pip-version-check 'Cython<3' wheel \
+    && pip install --no-cache-dir --disable-pip-version-check --no-build-isolation "pyyaml==${PYYAML_VERSION}" \
     && python -c "import yaml; print('pyyaml', yaml.__version__)"
 
 COPY harness.py /harness/harness.py

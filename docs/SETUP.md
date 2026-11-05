@@ -2,13 +2,15 @@
 
 About 15 minutes the first time. You need Docker, Python 3.9+, Switch Console, and at least one coding agent signed in (Claude Code; Codex optional). Everything runs on your machine.
 
+On Apple silicon Macs, Docker Desktop or a Docker-compatible Colima runtime works. If using Colima, install the Docker Compose plugin and make sure `docker compose version` succeeds. The sandbox keeps its temporary PoC mount under the checkout's ignored `.proveit/` directory, which must be shared with the Docker VM.
+
 ## 1. Get the code and build the sandbox
 
 ```sh
 git clone https://github.com/akhilll0305/team-pikachu-switch-ai
 cd team-pikachu-switch-ai
 python -m proveit build
-python -m unittest discover -s tests      # optional: 17 tests, about 10 s
+python -m unittest discover -s tests      # optional: 18 tests, about 10 s
 ```
 
 `build` creates two images, `proveit-target:vulnerable` (PyYAML 5.3.1) and `proveit-target:patched` (PyYAML 5.4). It needs network once; the sandbox never has network after that.
@@ -27,7 +29,7 @@ Intake is our own Switch agent, written against the agent protocol. It is not a 
 python -m proveit.intake setup
 ```
 
-It finds Console's local server settings (`<app data>/<Switch Console>/local-switch-server/.env`), registers `prove-it-intake` with the server's registration token, and opens it to everyone in its rooms so reporters can reach it. Credentials go to `.proveit/intake.json`, which is git-ignored. Use `--env-file` and `--api-url` for a server elsewhere, and `--overwrite` to re-register.
+It finds Console's local server settings (either the Docker `.env` or the native server's `native/run/switch-core.env`), registers `prove-it-intake` with the server's registration token, and opens it to everyone in its rooms so reporters can reach it. Credentials go to `.proveit/intake.json`, which is git-ignored. Use `--env-file` and `--api-url` for a server elsewhere, and `--overwrite` to re-register.
 
 ## 4. Deploy the template
 

@@ -1,75 +1,108 @@
-"""Deciding what a sandbox run proves. Rules, not opinions.
+"""What a sandbox run proves. Rules, not opinions.
 
-The agents argue about the evidence in the triage room; this module is what
-they cite. A verdict here never closes a report: a maintainer does that.
+The harness's parent process classifies each run into one outcome class
+from what it observed itself. This module maps outcomes to ticket states and
+builds the evidence pack the agents argue over. Every string it produces
+comes from fixed templates and allowlisted values: no reporter text.
 """
 
-from .config import DOS_MEMORY_MB, DOS_SECONDS
+CODE_EXECUTION = "CODE_EXECUTION"
+CRASH = "CRASH"
+RESOURCE_EXHAUSTION = "RESOURCE_EXHAUSTION"
+NOT_REPRODUCED = "NOT_REPRODUCED"
+INVALID_PROOF = "INVALID_PROOF"
+INCONCLUSIVE = "INCONCLUSIVE"
+REPRODUCING = (CODE_EXECUTION, CRASH, RESOURCE_EXHAUSTION)
 
-REPRODUCED = "reproduced"
-NOT_REPRODUCED = "not_reproduced"
-INVALID_PROOF = "invalid_proof"
-INCONCLUSIVE = "inconclusive"
+CLAIM_FOR_OUTCOME = {CODE_EXECUTION: "code_execution", CRASH: "crash", RESOURCE_EXHAUSTION: "denial_of_service"}
+# The highest severity each outcome can support. Resource exhaustion is never code execution.
+SEVERITY_CEILING = {CODE_EXECUTION: "critical", CRASH: "high", RESOURCE_EXHAUSTION: "medium"}
+SEVERITY_RANK = {"low": 1, "medium": 2, "high": 3, "critical": 4}
 
-ENVIRONMENT_ERRORS = {"SyntaxError", "IndentationError", "ModuleNotFoundError", "ImportError", "FileNotFoundError"}
-
-
-def judge_run(claim, run):
-    """Return (verdict, reasons) for one run of one claim."""
-    reasons = []
-    if run.get("harness_lost") and not run.get("timed_out") and not run.get("killed"):
-        return INCONCLUSIVE, ["the harness produced no record (exit code %s)" % run.get("exit_code")]
-
-    error = run.get("error") or {}
-    if error.get("type") in ENVIRONMENT_ERRORS and not error.get("in_library"):
-        return INCONCLUSIVE, ["the PoC itself failed before reaching the library: %s: %s" % (error.get("type"), error.get("message"))]
-
-    lib_exec = [e for e in run.get("events", []) if e["in_library"] and e["event"] in ("exec", "compile", "os.system", "subprocess.Popen", "os.exec", "os.posix_spawn")]
-
-    if claim == "code_execution":
-        if run.get("marker_written_by_library"):
-            reasons.append("the library wrote %s itself (call stack: %s)" % (
-                "/tmp/proveit_marker", ", ".join(next(e["library_frames"] for e in run["events"] if e["in_library"] and e["detail"].endswith("proveit_marker"))[:3])))
-            return REPRODUCED, reasons
-        if run.get("marker_written_by_poc"):
-            return INVALID_PROOF, ["the marker was written by the PoC script, not by the library"]
-        if lib_exec:
-            reasons.append("the library evaluated code (%s) but the marker was never created" % lib_exec[0]["detail"])
-        if error:
-            reasons.append("the library refused the input: %s: %s" % (error.get("type"), error.get("message")))
-        reasons.append("no code ran from inside the library")
-        return NOT_REPRODUCED, reasons
-
-    if claim == "denial_of_service":
-        rss, secs = run.get("peak_rss_mb") or 0, run.get("seconds") or 0
-        if run.get("timed_out") or run.get("killed") or rss > DOS_MEMORY_MB or secs > DOS_SECONDS:
-            return REPRODUCED, ["resource limit hit: %.0f MB peak, %.2f s%s" % (rss, secs, ", killed" if run.get("killed") else "")]
-        return NOT_REPRODUCED, ["the call finished normally: %.1f MB peak memory, %.3f s" % (rss, secs)]
-
-    if claim == "crash":
-        signal = run.get("signal")
-        if signal and signal != 9:
-            return REPRODUCED, ["the interpreter died with signal %s" % signal]
-        if error:
-            return NOT_REPRODUCED, ["a Python exception is not a crash: %s: %s" % (error.get("type"), error.get("message"))]
-        return NOT_REPRODUCED, ["the process exited normally"]
-
-    if claim == "info_leak":
-        return INCONCLUSIVE, ["information leaks need a maintainer to read the output; nothing is decided automatically"]
-
-    return INCONCLUSIVE, ["no rule for claim %r" % claim]
+RUN_FIELDS = ("build", "target_version", "entry_point", "payload_sha256", "payload_bytes", "outcome", "why",
+              "exit_code", "signal", "timed_out", "seconds", "peak_rss_mb", "marker_created",
+              "exception_type", "exception_sha256", "exception_frames", "dropped_values", "ran")
 
 
-def compare(claim, vulnerable_run, patched_run=None):
-    """Verdict across builds: a real bug reproduces before the fix and not after."""
-    verdict, reasons = judge_run(claim, vulnerable_run)
-    summary = {"verdict": verdict, "reasons": reasons, "vulnerable": verdict}
-    if patched_run is not None:
-        patched_verdict, patched_reasons = judge_run(claim, patched_run)
-        summary["patched"] = patched_verdict
-        summary["patched_reasons"] = patched_reasons
-        if verdict == REPRODUCED and patched_verdict == REPRODUCED:
-            summary["reasons"].append("it also reproduces on the patched build, so this may be a new issue")
-        elif verdict == REPRODUCED:
-            summary["reasons"].append("it does not reproduce on the patched build (%s)" % patched_reasons[0])
-    return summary
+def status_for(run):
+    """The ticket state a vulnerable-build run supports, or None if it proves nothing either way."""
+    outcome = run.get("outcome")
+    if outcome in REPRODUCING:
+        return "reproduced"
+    if outcome in (NOT_REPRODUCED, INVALID_PROOF):
+        return "not_reproduced"
+    return None
+
+
+def library_frames(run):
+    frames = []
+    for event in run.get("events") or []:
+        for frame in event.get("library_frames") or []:
+            if frame not in frames:
+                frames.append(frame)
+    return frames[:8]
+
+
+def summary(run):
+    """The fixed fields of one run."""
+    out = {k: run.get(k) for k in RUN_FIELDS if k in run}
+    out["library_frames"] = library_frames(run)
+    out["events"] = [{"event": e["event"], "in_library": e["in_library"]} for e in run.get("events") or []][:20]
+    return out
+
+
+def describe(run):
+    """One line per run, from fixed templates."""
+    text = "%s on PyYAML %s via %s: %s" % (run.get("build"), run.get("target_version"), run.get("entry_point"),
+                                          run.get("outcome"))
+    details = []
+    if run.get("why"):
+        details.append(run["why"])
+    if run.get("exception_type"):
+        details.append("raised %s (message sha256 %s...)" % (run["exception_type"], (run.get("exception_sha256") or "?")[:12]))
+    frames = library_frames(run)
+    if frames:
+        details.append("library frames: " + " < ".join(frames[:3]))
+    if run.get("seconds") is not None:
+        details.append("%.3f s, %.1f MB peak" % (run.get("seconds") or 0, run.get("peak_rss_mb") or 0))
+    return text + ("; " + "; ".join(details) if details else "")
+
+
+def facts(record, vulnerable, patched):
+    """The Skeptic's checklist, answered from the evidence. None means "not known yet"."""
+    outcome = (vulnerable or {}).get("outcome")
+    claimed = record.get("claim")
+    severity = record.get("severity")
+    ceiling = SEVERITY_CEILING.get(outcome)
+    in_library = None
+    if vulnerable and vulnerable.get("ran"):
+        in_library = bool(library_frames(vulnerable) or vulnerable.get("exception_frames"))
+    patched_outcome = (patched or {}).get("outcome")
+    return {
+        "entry_point_allowlisted": bool(record.get("entry_point")) and not record.get("poc_problem"),
+        "vulnerable_outcome": outcome,
+        "outcome_matches_claim": None if outcome is None else CLAIM_FOR_OUTCOME.get(outcome) == claimed,
+        "library_frames_recorded": in_library,
+        "code_execution_proven_by_marker": None if vulnerable is None else bool(vulnerable.get("marker_created")),
+        "patched_build_checked": patched is not None,
+        "patched_outcome": patched_outcome,
+        "reproduces_on_patched_too": None if patched is None or outcome is None else (
+            outcome in REPRODUCING and patched_outcome in REPRODUCING),
+        "claimed_severity": severity,
+        "severity_supported_by_outcome": None if outcome is None or severity in (None, "unrated") else (
+            ceiling is not None and SEVERITY_RANK.get(severity, 0) <= SEVERITY_RANK[ceiling]),
+    }
+
+
+def notes(facts_):
+    """Fixed sentences a human should read before deciding."""
+    out = []
+    if facts_["reproduces_on_patched_too"]:
+        out.append("reproduces on the patched build too: possible new issue, human review required")
+    if facts_["vulnerable_outcome"] in REPRODUCING and not facts_["patched_build_checked"]:
+        out.append("the patched build has not been checked yet")
+    if facts_["outcome_matches_claim"] is False and facts_["vulnerable_outcome"] in REPRODUCING:
+        out.append("the outcome class does not match the claimed impact")
+    if facts_["severity_supported_by_outcome"] is False:
+        out.append("the claimed severity is higher than this outcome supports")
+    return out

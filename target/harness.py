@@ -1,162 +1,236 @@
-"""Runs one proof of concept inside the sandbox and reports what it did.
+"""The parent: runs one proof of concept and writes the only result record.
 
-The PoC is untrusted code. This harness does not try to stop it (the
-container does that: no network, no secrets, read-only, capped memory,
-unprivileged user). It records evidence instead, with a Python audit hook:
+A proof of concept is data: a YAML payload and one entry point from a fixed
+list. This process never parses the payload. It creates a fresh marker
+directory, starts a child process that imports PyYAML and makes the one
+declared call (child.py), and observes the child from outside: exit status,
+signal, wall time, peak memory, and whether the marker file appeared.
 
-* every file opened for writing, every exec/compile, every process spawn and
-  every socket connect the PoC caused;
-* for each one, whether code from the target library was on the call stack
-  at that moment. That is the difference between "the library ran my code"
-  (a real bug) and "my script wrote the file itself" (a fake proof).
+The child's own report (exception type, library call stacks) is treated as
+untrusted: if the library ran attacker code, that code runs in the child.
+Only fields that match strict allowlists are kept, and the outcome never
+depends on them. The one-time code that tags the result line is read from
+stdin by this process and never given to the child, and this process marks
+itself non-dumpable so a same-user child cannot read its memory or file
+descriptors through /proc.
 
-The verdict is decided on the host from this record, never in here.
-
-Protocol: the host writes a one-line nonce on stdin. The result is printed
-on the real stdout as one line: ``@@PROVEIT <nonce> <json>``. Anything the
-PoC prints goes to a capture file and is returned inside the JSON.
+Protocol: the host writes a one-line nonce on stdin, mounts /poc/job.json
+({"entry_point": ...}) and /poc/payload.yaml read-only, and reads exactly
+one line from stdout: ``@@PROVEIT <nonce> <json>``.
 """
 
+import builtins
+import ctypes
+import hashlib
 import json
 import os
+import re
 import resource
-import runpy
+import signal
+import subprocess
 import sys
+import threading
 import time
-import traceback
 
-POC_PATH = "/poc/poc.py"
-MARKER = "/tmp/proveit_marker"
-CAPTURE = "/tmp/.proveit_output"
-LIBRARY_PACKAGE = "yaml"
-WATCHED = {
-    "open",
-    "exec",
-    "compile",
-    "os.system",
-    "os.exec",
-    "os.posix_spawn",
-    "os.spawn",
-    "subprocess.Popen",
-    "socket.connect",
-    "ctypes.dlopen",
-}
-MAX_EVENTS = 60
-MAX_OUTPUT = 4000
+JOB = "/poc/job.json"
+PAYLOAD = "/poc/payload.yaml"
+CHILD = os.path.join(os.path.dirname(os.path.abspath(__file__)), "child.py")
+MARKER_DIR = "/tmp/proveit"
+MARKER = MARKER_DIR + "/marker"
+ENTRY_POINTS = ("safe_load", "full_load", "load:SafeLoader", "load:FullLoader")
+PAYLOAD_MAX_BYTES = 64 * 1024
+CALL_SECONDS = 10
+CALL_MEMORY_MB = 192
+EVENT_KINDS = {"exec", "compile", "write-marker", "write-other", "os.system", "os.exec",
+               "os.posix_spawn", "os.spawn", "subprocess.Popen", "socket.connect", "ctypes.dlopen"}
+CRASH_SIGNALS = {signal.SIGSEGV, signal.SIGBUS, signal.SIGABRT, signal.SIGFPE, signal.SIGILL}
+REPORT_MAX = 256 * 1024
 
 
-def _library_dir():
-    module = __import__(LIBRARY_PACKAGE)
-    return os.path.dirname(os.path.abspath(module.__file__)), getattr(module, "__version__", "?")
+def make_nondumpable():
+    try:
+        ctypes.CDLL(None, use_errno=True).prctl(4, 0, 0, 0, 0)  # PR_SET_DUMPABLE = 4
+    except Exception:
+        pass
+
+
+def library_allowlists():
+    """Every function name in PyYAML's own source, and its exception classes."""
+    import yaml
+    lib_dir = os.path.dirname(os.path.abspath(yaml.__file__))
+    functions = set()
+    for name in os.listdir(lib_dir):
+        if not name.endswith(".py"):
+            continue
+        with open(os.path.join(lib_dir, name), encoding="utf-8") as handle:
+            code = compile(handle.read(), name, "exec")
+        stack = [code]
+        while stack:
+            current = stack.pop()
+            functions.add("%s:%s" % (name, current.co_name))
+            stack.extend(c for c in current.co_consts if hasattr(c, "co_code"))
+    exceptions = {n for n in dir(builtins) if isinstance(getattr(builtins, n), type)
+                  and issubclass(getattr(builtins, n), BaseException)}
+    for module_name in list(sys.modules):
+        if module_name == "yaml" or module_name.startswith("yaml."):
+            module = sys.modules[module_name]
+            for attr in dir(module):
+                value = getattr(module, attr, None)
+                if isinstance(value, type) and issubclass(value, BaseException):
+                    exceptions.add(attr)
+    return yaml.__version__, functions, exceptions
+
+
+def clean_frames(frames, allowed):
+    if not isinstance(frames, list):
+        return [], 0
+    kept = [f for f in frames if isinstance(f, str) and f in allowed]
+    return kept[:6], len(frames) - len(kept)
+
+
+def sanitize(report, functions, exceptions):
+    """Keep only allowlisted values from the child's untrusted report."""
+    clean = {"exception_type": None, "exception_sha256": None, "exception_frames": [],
+             "events": [], "dropped_values": 0}
+    if not isinstance(report, dict):
+        return clean
+    exc_type = report.get("exception_type")
+    if exc_type is not None:
+        clean["exception_type"] = exc_type if exc_type in exceptions else "OtherException"
+    digest = report.get("exception_sha256")
+    if isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest):
+        clean["exception_sha256"] = digest
+    clean["exception_frames"], dropped = clean_frames(report.get("exception_frames"), functions)
+    clean["dropped_values"] += dropped
+    events = report.get("events") if isinstance(report.get("events"), list) else []
+    for event in events[:40]:
+        if not isinstance(event, dict) or event.get("event") not in EVENT_KINDS:
+            clean["dropped_values"] += 1
+            continue
+        frames, dropped = clean_frames(event.get("library_frames"), functions)
+        clean["dropped_values"] += dropped
+        clean["events"].append({"event": event["event"], "in_library": bool(frames), "library_frames": frames})
+    return clean
+
+
+def limit_child():
+    memory = CALL_MEMORY_MB * 1024 * 1024
+    resource.setrlimit(resource.RLIMIT_AS, (memory, memory))
+    resource.setrlimit(resource.RLIMIT_CPU, (CALL_SECONDS, CALL_SECONDS + 1))
+    resource.setrlimit(resource.RLIMIT_FSIZE, (1024 * 1024, 1024 * 1024))
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+
+
+def run(entry, payload_bytes):
+    os.mkdir(MARKER_DIR, 0o700)  # fails if it already exists: every run starts clean
+    read_fd, write_fd = os.pipe()
+    chunks = []
+
+    def drain():
+        total = 0
+        while True:
+            data = os.read(read_fd, 65536)
+            if not data:
+                break
+            if total < REPORT_MAX:
+                chunks.append(data[:REPORT_MAX - total])
+            total += len(data)
+
+    started = time.monotonic()
+    child = subprocess.Popen(
+        [sys.executable, "-I", CHILD, entry, PAYLOAD, MARKER, str(write_fd)],
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        pass_fds=(write_fd,), cwd=MARKER_DIR, env={"PATH": "/usr/local/bin:/usr/bin:/bin", "LANG": "C.UTF-8"},
+        preexec_fn=limit_child, start_new_session=True)
+    os.close(write_fd)
+    reader = threading.Thread(target=drain, daemon=True)
+    reader.start()
+    timed_out = False
+    try:
+        child.wait(timeout=CALL_SECONDS)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        try:
+            os.killpg(child.pid, signal.SIGKILL)
+        except OSError:
+            pass
+        child.wait()
+    elapsed = time.monotonic() - started
+    try:
+        os.killpg(child.pid, signal.SIGKILL)  # anything the payload left running
+    except OSError:
+        pass
+    reader.join(2)
+    peak_kb = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
+    marker_created = os.path.exists(MARKER)
+    try:
+        report = json.loads(b"".join(chunks).decode("utf-8"))
+    except Exception:
+        report = None
+    return {"returncode": child.returncode, "timed_out": timed_out, "seconds": round(elapsed, 3),
+            "peak_rss_mb": round(peak_kb / 1024.0, 1), "marker_created": marker_created, "report": report}
+
+
+def classify(observed, clean):
+    rc = observed["returncode"]
+    sig = -rc if rc is not None and rc < 0 else None
+    if observed["marker_created"]:
+        return "CODE_EXECUTION", "the marker file appeared, so the library ran the payload as code"
+    if observed["timed_out"]:
+        return "RESOURCE_EXHAUSTION", "the library call ran past the %d s limit" % CALL_SECONDS
+    if sig in (signal.SIGKILL, signal.SIGXCPU):
+        return "RESOURCE_EXHAUSTION", "the library call was killed by a resource limit (signal %d)" % sig
+    if sig in CRASH_SIGNALS:
+        return "CRASH", "the library call died on signal %d" % sig
+    if sig is not None:
+        return "INCONCLUSIVE", "the child stopped on unexpected signal %d" % sig
+    if observed["report"] is None or rc != 0:
+        return "INCONCLUSIVE", "the child exited %s without a report" % rc
+    if clean["exception_type"] == "MemoryError":
+        return "RESOURCE_EXHAUSTION", "the library call ran out of its %d MB memory limit" % CALL_MEMORY_MB
+    return "NOT_REPRODUCED", "the library call finished without code execution, crash or resource exhaustion"
 
 
 def main():
     nonce = sys.stdin.readline().strip()
     sys.stdin.close()
-    real_stdout = os.dup(1)
-
-    lib_dir, lib_version = _library_dir()
-    events = []
-    state = {"armed": False, "dropped": 0}
-
-    def library_frames():
-        names = []
-        frame = sys._getframe(2)
-        while frame is not None:
-            filename = frame.f_code.co_filename
-            if filename.startswith(lib_dir):
-                names.append("%s:%s" % (os.path.basename(filename), frame.f_code.co_name))
-            frame = frame.f_back
-        return names
-
-    def describe(event, args):
-        if event == "open":
-            path, mode = args[0], args[1]
-            flags = args[2] if len(args) > 2 and isinstance(args[2], int) else 0
-            if not isinstance(path, str):
-                return None
-            if mode is not None:
-                writing = any(c in str(mode) for c in "wax+")
-            else:  # os.open: decide from the flags
-                writing = bool(flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT))
-            if not writing or path == CAPTURE:
-                return None
-            return "write %s" % path
-        if event in ("exec", "compile"):
-            return event
-        return "%s %s" % (event, str(args[0])[:120] if args else "")
-
-    def hook(event, args):
-        if not state["armed"] or event not in WATCHED:
-            return
-        try:
-            detail = describe(event, args)
-            if detail is None:
-                return
-            frames = library_frames()
-            if len(events) >= MAX_EVENTS:
-                state["dropped"] += 1
-                return
-            events.append({
-                "event": event,
-                "detail": detail,
-                "in_library": bool(frames),
-                "library_frames": frames[:6],
-            })
-        except Exception:  # never let evidence collection break the run
-            pass
-
-    sys.addaudithook(hook)
-
-    capture = os.open(CAPTURE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    sys.stdout.flush()
-    sys.stderr.flush()
-    os.dup2(capture, 1)
-    os.dup2(capture, 2)
-
-    error = None
-    started = time.monotonic()
-    state["armed"] = True
+    make_nondumpable()
+    version, functions, exceptions = library_allowlists()
+    record = {"library": "yaml", "library_version": version, "entry_point": None,
+              "payload_sha256": None, "payload_bytes": None}
     try:
-        runpy.run_path(POC_PATH, run_name="__main__")
-    except SystemExit as exc:
-        if exc.code not in (None, 0):
-            error = {"type": "SystemExit", "message": str(exc.code), "in_library": False}
-    except BaseException as exc:  # the PoC may raise anything
-        tb = traceback.extract_tb(exc.__traceback__)
-        error = {
-            "type": type(exc).__name__,
-            "message": (str(exc).splitlines() or [""])[0][:300],
-            "in_library": any(f.filename.startswith(lib_dir) for f in tb),
-            "where": ["%s:%s" % (os.path.basename(f.filename), f.name) for f in tb[-4:]],
-        }
-    finally:
-        state["armed"] = False
-    elapsed = time.monotonic() - started
-
-    sys.stdout.flush()
-    sys.stderr.flush()
-    os.dup2(real_stdout, 1)
-    os.dup2(real_stdout, 2)
-    os.close(capture)
-    with open(CAPTURE, "r", errors="replace") as handle:
-        output = handle.read()
-
-    marker_writes = [e for e in events if e["event"] == "open" and e["detail"] == "write " + MARKER]
-    result = {
-        "library": LIBRARY_PACKAGE,
-        "library_version": lib_version,
-        "seconds": round(elapsed, 3),
-        "peak_rss_mb": round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0, 1),
-        "error": error,
-        "events": events,
-        "events_dropped": state["dropped"],
-        "marker_exists": os.path.exists(MARKER),
-        "marker_written_by_library": any(e["in_library"] for e in marker_writes),
-        "marker_written_by_poc": any(not e["in_library"] for e in marker_writes),
-        "output": output[-MAX_OUTPUT:],
-    }
-    os.write(1, ("@@PROVEIT %s %s\n" % (nonce, json.dumps(result))).encode())
+        with open(JOB, encoding="utf-8") as handle:
+            entry = json.load(handle).get("entry_point")
+        with open(PAYLOAD, "rb") as handle:
+            payload = handle.read(PAYLOAD_MAX_BYTES + 1)
+        record.update(entry_point=entry if entry in ENTRY_POINTS else "rejected",
+                      payload_sha256=hashlib.sha256(payload).hexdigest(), payload_bytes=len(payload))
+        problem = None
+        if entry not in ENTRY_POINTS:
+            problem = "entry point is not on the allowlist"
+        elif len(payload) > PAYLOAD_MAX_BYTES:
+            problem = "payload is larger than %d bytes" % PAYLOAD_MAX_BYTES
+        else:
+            try:
+                payload.decode("utf-8")
+            except UnicodeDecodeError:
+                problem = "payload is not UTF-8"
+        if problem:
+            record.update(outcome="INVALID_PROOF", why=problem)
+        else:
+            observed = run(entry, payload)
+            clean = sanitize(observed["report"], functions, exceptions)
+            outcome, why = classify(observed, clean)
+            rc = observed["returncode"]
+            record.update(
+                outcome=outcome, why=why, exit_code=rc if rc is not None and rc >= 0 else None,
+                signal=-rc if rc is not None and rc < 0 else None, timed_out=observed["timed_out"],
+                seconds=observed["seconds"], peak_rss_mb=observed["peak_rss_mb"],
+                marker_created=observed["marker_created"], child_report_received=observed["report"] is not None,
+                **clean)
+    except Exception as exc:  # a harness fault, never the payload's doing
+        record.update(outcome="INCONCLUSIVE", why="harness error: %s" % type(exc).__name__)
+    os.write(1, ("@@PROVEIT %s %s\n" % (nonce, json.dumps(record, sort_keys=True))).encode())
 
 
 if __name__ == "__main__":

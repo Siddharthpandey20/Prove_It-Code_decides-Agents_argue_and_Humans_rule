@@ -460,6 +460,8 @@ class Intake:
         log.info("triage command from %r (kind %s): %s", payload.get("sender_name"), payload.get("sender_kind"),
                  match.group(1).lower() if match else "none")
         with self.lock:
+            if not match and self.is_agent(payload):
+                return  # never answer an agent's chatter with help text: two agents could loop
             if not match:
                 self.triage.post("Commands: `escalate R-001 [note]`, `close R-001 <reason>`, `override R-001 [note]`, "
                                  "`release R-001`, `notify R-001`, `evidence R-001`, `status`, `tally`; "

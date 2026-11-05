@@ -62,19 +62,19 @@ class Mattermost:
             sys.exit("Mattermost %s %s: %s %s" % (method, path, exc.code, exc.read().decode()[:300]))
 
     def channel(self, name):
-        """The newest channel named or displayed as `name`: joined ones first, else a public one, which is joined."""
+        """The newest channel named or displayed as `name`, among those joined and the public ones (joined if needed)."""
         mine, public = [], []
         for team in self.call("GET", "/users/me/teams"):
             mine += [ch for ch in self.call("GET", "/users/me/teams/%s/channels" % team["id"])
                      if name in (ch["name"], ch["display_name"]) and not ch.get("delete_at")]
             public += [ch for ch in self.call("GET", "/teams/%s/channels?per_page=200" % team["id"])
                        if name in (ch["name"], ch["display_name"]) and not ch.get("delete_at")]
-        if mine:
-            return max(mine, key=lambda ch: ch["create_at"])["id"]
-        if public:
-            ch = max(public, key=lambda c: c["create_at"])
-            self.call("POST", "/channels/%s/members" % ch["id"], {"user_id": self.me["id"]})
-            print("joined #%s" % ch["display_name"])
+        candidates = {ch["id"]: ch for ch in mine + public}
+        if candidates:
+            ch = max(candidates.values(), key=lambda c: c["create_at"])  # the newest deployment's channel
+            if ch["id"] not in {c["id"] for c in mine}:
+                self.call("POST", "/channels/%s/members" % ch["id"], {"user_id": self.me["id"]})
+                print("joined #%s" % ch["display_name"])
             return ch["id"]
         sys.exit("No channel named %s that you are in or can join. A private room (like #proveit-triage) needs a "
                  "maintainer to add you." % name)

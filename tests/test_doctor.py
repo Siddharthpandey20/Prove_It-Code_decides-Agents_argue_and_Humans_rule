@@ -42,6 +42,24 @@ class AgentFolders(unittest.TestCase):
         self.assertIn("its lockdown", r.out.getvalue())
 
 
+class Emulation(unittest.TestCase):
+    def check(self, text, machine="arm64"):
+        path = Path(tempfile.mkdtemp()) / "colima.yaml"
+        path.write_text(text)
+        r = report()
+        doctor.check_emulation(r, machine=machine, colima_yaml=path)
+        return r
+
+    def test_qemu_on_apple_silicon_is_flagged(self):
+        r = self.check("arch: aarch64\nrosetta: false\n")
+        self.assertIn("--vz-rosetta", r.out.getvalue())
+        self.assertEqual(r.results[0][0], "WARN")
+
+    def test_rosetta_passes_and_intel_is_not_checked(self):
+        self.assertEqual(self.check("rosetta: true\n").results[0][0], "PASS")
+        self.assertEqual(self.check("rosetta: false\n", machine="x86_64").results, [])
+
+
 class Intake(unittest.TestCase):
     def test_no_maintainers_fails(self):
         r = report()
@@ -163,6 +181,15 @@ class ReplayChannels(unittest.TestCase):
     def test_public_intake_channel_is_joined(self):
         new = {"id": "new", "name": "proveit-intake-x", "display_name": "proveit-intake", "create_at": 2, "delete_at": 0}
         mm, joined = self.mattermost([], [new])
+        with mock.patch("builtins.print"):
+            self.assertEqual(mm.channel("proveit-intake"), "new")
+        self.assertEqual(joined, ["/channels/new/members"])
+
+    def test_a_newer_public_channel_beats_an_old_joined_one(self):
+        # Seen live: the reporter was still in the previous deployment's channel.
+        old = {"id": "old", "name": "proveit-intake-1", "display_name": "proveit-intake", "create_at": 1, "delete_at": 0}
+        new = {"id": "new", "name": "proveit-intake-2", "display_name": "proveit-intake", "create_at": 2, "delete_at": 0}
+        mm, joined = self.mattermost([old], [old, new])
         with mock.patch("builtins.print"):
             self.assertEqual(mm.channel("proveit-intake"), "new")
         self.assertEqual(joined, ["/channels/new/members"])

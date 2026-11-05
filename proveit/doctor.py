@@ -50,6 +50,21 @@ def check_docker(r):
     return True
 
 
+def check_emulation(r, machine=None, colima_yaml=None):
+    """Mattermost Team Edition ships for amd64 only. On Apple silicon under Colima without Rosetta it runs
+    under QEMU, where it crashes (seen three times on 2026-11-05, twice while rooms were created)."""
+    import platform
+    machine = machine or platform.machine()
+    colima_yaml = Path(colima_yaml) if colima_yaml else Path.home() / ".colima" / "default" / "colima.yaml"
+    if machine not in ("arm64", "aarch64") or not colima_yaml.exists():
+        return
+    lines = [l.strip() for l in colima_yaml.read_text(encoding="utf-8").splitlines()]
+    rosetta = any(l.replace(" ", "") == "rosetta:true" for l in lines)
+    r.add(PASS if rosetta else WARN, "amd64 emulation (Mattermost is amd64-only)",
+          "Colima uses Rosetta" if rosetta else "Colima emulates amd64 with QEMU, where Mattermost crashes; run "
+          "`colima stop && colima start --vz-rosetta`, then start the containers again")
+
+
 def check_images(r):
     for name, spec in config.TARGET["builds"].items():
         try:
@@ -209,6 +224,7 @@ def run(out=None, live=True):
     check_python(r)
     if check_docker(r):
         check_images(r)
+        check_emulation(r)
     check_private_home(r)
     state = check_intake(r)
     if state and live:

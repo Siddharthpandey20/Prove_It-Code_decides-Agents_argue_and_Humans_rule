@@ -101,12 +101,14 @@ Finding numbers (F1 to F31) refer to the assessment.
 
 ## J. Live verification (F15, F16, F17, F18, F19)
 
-- [ ] J1 Headless e2e (`scripts/e2e.py`) rerun on this branch; log saved to `docs/evidence/`.
-- [ ] J2 Rehearsal twice on this branch.
-- [ ] J3 Console redeployed from the updated template; Intake restarted on the new code.
+- [x] J1 Headless e2e (`scripts/e2e.py`) rerun on this branch; log saved to `docs/evidence/`.
+- [x] J2 Rehearsal twice on this branch.
+- [x] J3 Console redeployed from the updated template; Intake restarted on the new code.
 - [ ] J4 (also confirm what sender name Intake receives for the Skeptic's posts, and correct SETUP's troubleshooting row if needed) Live run in Switch Console with the real Claude Reproducer and Codex Skeptic: check, patched check, Skeptic review, maintainer decision, reporter reply. Room log and ticket JSON saved to `docs/evidence/`.
 - [ ] J5 Live permission checks: each agent asked to read `private/` and to run a forbidden command; results recorded.
 - [ ] J6 Live outsider check: a non-maintainer's `close` is refused in the real room.
+
+  Progress 2026-11-05 18:05 IST: J1 `docs/evidence/e2e-2026-11-05-macos.log` E2E PASSED. J2 rehearsal twice identical. J3 Console redeployed from the updated template (triage `channel_private`, agents in their own folders, `doctor` READY); Colima switched to Rosetta after Mattermost (amd64 under QEMU) crashed three times. J4 started: R-004 reached triage from the reporter's account; `@prove-it-reproducer check R-004` was answered "On it" but no run had appeared after 2 minutes (probably waiting for a permission approval in Console). Found live and fixed: Intake's ticket message @-mentioned the Skeptic, causing an agent-to-agent reply loop. Still needed: a person runs `python3 -m proveit.intake maintainers add Admin` and restarts Intake (the deployer posts as `Admin` through Switch's chat), then the J4 to J6 steps.
 
 ## K. Documentation (F30)
 

@@ -147,7 +147,7 @@ def ticket_posted(record):
             "The payload is data and only runs inside the sandbox. Nothing the reporter wrote is in this ticket.\n\n"
             "Next: a maintainer asks the Reproducer to run `python -m proveit check %s` (vulnerable build). "
             "The patched build runs only when someone asks: `check %s --build patched`.\n"
-            "@prove-it-skeptic then reviews it. Maintainers decide with `escalate %s` (needs a current concur, or "
+            "The Skeptic then reviews it. Maintainers decide with `escalate %s` (needs a current concur, or "
             "an `override`), `close %s <reason>` or `override %s`, addressed to Intake." % (
                 record["id"], record.get("claim"), record.get("severity"), record.get("entry_point"),
                 (record.get("payload_sha256") or "")[:16], record.get("payload_bytes"),

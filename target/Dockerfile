@@ -14,8 +14,11 @@
 FROM python:3.9-slim@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b
 
 ARG PYYAML_VERSION
+# PyYAML 5.4 has no ARM64 wheel (Apple silicon, Linux ARM), and its source
+# build fails with Cython 3, so build it against Cython 0.x without isolation.
 RUN test -n "$PYYAML_VERSION" \
-    && pip install --no-cache-dir --disable-pip-version-check "pyyaml==${PYYAML_VERSION}" \
+    && pip install --no-cache-dir --disable-pip-version-check 'Cython<3' wheel \
+    && pip install --no-cache-dir --disable-pip-version-check --no-build-isolation "pyyaml==${PYYAML_VERSION}" \
     && python -c "import yaml; print('pyyaml', yaml.__version__)"
 
 COPY harness.py child.py /harness/

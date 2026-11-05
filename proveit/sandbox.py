@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 from . import poc
-from .config import SANDBOX_LIMITS, TARGET, TARGET_DIR
+from .config import REPO_ROOT, SANDBOX_LIMITS, TARGET, TARGET_DIR
 
 HARNESS_FILES = ("Dockerfile", "harness.py", "child.py")
 
@@ -79,6 +79,17 @@ def docker_flags(name, poc_dir):
     ]
 
 
+def _mount_root():
+    """Where the read-only /poc mount is staged: inside the checkout, not the system temp folder.
+
+    Docker Desktop and Colima on macOS share the home folder with their VM but
+    not macOS's /var/folders temp directory, so a mount from there arrives empty.
+    """
+    root = REPO_ROOT / ".proveit"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
 def _readable_by_sandbox(folder):
     """The container runs as uid 65534; on Linux hosts it must be able to read the read-only mount."""
     os.chmod(folder, 0o755)
@@ -115,7 +126,7 @@ def run_poc(entry_point, payload, build_name="vulnerable"):
         build(build_name)
     nonce = secrets.token_hex(16)
     name = "proveit-run-%s" % nonce[:12]
-    with tempfile.TemporaryDirectory(prefix="proveit-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="proveit-", dir=_mount_root()) as tmp:
         poc_dir = Path(tmp)
         (poc_dir / "job.json").write_text(json.dumps({"entry_point": entry_point}), encoding="utf-8")
         (poc_dir / "payload.yaml").write_bytes(payload.encode("utf-8"))
@@ -138,7 +149,7 @@ def run_probe(code, build_name="vulnerable", timeout=None):
     """Tests only: run Python code in a container with exactly the flags a PoC run gets."""
     spec = TARGET["builds"][build_name]
     name = "proveit-probe-%s" % secrets.token_hex(6)
-    with tempfile.TemporaryDirectory(prefix="proveit-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="proveit-", dir=_mount_root()) as tmp:
         _readable_by_sandbox(tmp)
         cmd = docker_flags(name, tmp) + ["--entrypoint", "python", spec["image"], "-I", "-c", code]
         exit_code, stdout, timed_out = _execute(cmd, "", name)

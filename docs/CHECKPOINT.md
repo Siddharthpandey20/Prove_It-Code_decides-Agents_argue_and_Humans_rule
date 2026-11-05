@@ -93,9 +93,11 @@ Finding numbers (F1 to F31) refer to the assessment.
 
 ## I. Honest metrics and scope (F26, F27)
 
-- [ ] I1 "Maintainer time" is renamed "time to decision" everywhere (tally, messages, docs).
-- [ ] I2 The reporter's first reply states the scope (PyYAML 5.3.1 vs 5.4, the four entry points).
-- [ ] I3 Tests updated.
+- [x] I1 "Maintainer time" is renamed "time to decision" everywhere (tally, messages, docs).
+- [x] I2 The reporter's first reply states the scope (PyYAML 5.3.1 vs 5.4, the four entry points).
+- [x] I3 Tests updated.
+
+  Evidence: `actions.decision_seconds`, tally field `seconds_to_decision`, tally line "time to decision 1.4 s", reporter cost line "N s from triage to decision (elapsed time, not effort)"; README and DEMO say the same. Scope line (I2) was added with group C: `messages.scope_line()` in the accepted, ask-for-proof and invalid-proof replies (`tests/test_evidence.py` `Scope`). 159 tests OK, rehearsal twice identical.
 
 ## J. Live verification (F15, F16, F17, F18, F19)
 

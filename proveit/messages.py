@@ -70,7 +70,7 @@ def cost_line(record):
     times = record.get("times", {})
     parts = ["%d sandbox run%s (%.2f s of sandbox time)" % (len(runs), "" if len(runs) == 1 else "s", secs)]
     if times.get("triaged") and times.get("decided"):
-        parts.append("%.0f s of maintainer time from triage to decision" % (times["decided"] - times["triaged"]))
+        parts.append("%.0f s from triage to decision (elapsed time, not effort)" % (times["decided"] - times["triaged"]))
     cost = record.get("cost")
     parts.append("agent cost %s" % ("$%.2f (source: %s)" % (cost["usd"], cost["source"]) if cost else "not recorded"))
     return "_Cost so far: " + "; ".join(parts) + "._"

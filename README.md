@@ -175,7 +175,7 @@ One table in [proveit/states.py](proveit/states.py) is enforced by every command
 
 ### The tally
 
-`python -m proveit tally` (or `@prove-it-intake tally`) prints counts by status and by outcome, total sandbox runs and seconds, and for each report the maintainer time (from the moment it reached triage to the decision, from recorded timestamps) and the agent cost if a human recorded one with `proveit cost`, otherwise `not recorded`.
+`python -m proveit tally` (or `@prove-it-intake tally`) prints counts by status and by outcome, total sandbox runs and seconds, and for each report the time to decision (elapsed time from the moment it reached triage to a maintainer's decision, from recorded timestamps; it is not a measure of effort) and the agent cost if a human recorded one with `proveit cost`, otherwise `not recorded`.
 
 ## Verification status
 

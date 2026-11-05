@@ -285,7 +285,7 @@ class ReporterMessages(WorkDirTest):
 
 
 class Tally(WorkDirTest):
-    def test_maintainer_time_and_cost_not_recorded(self):
+    def test_time_to_decision_and_cost_not_recorded(self):
         agent = self.make_intake()
         self.report(agent, VALID)
         record = store.load("R-001")
@@ -295,17 +295,20 @@ class Tally(WorkDirTest):
             actions.check("R-001", actor="agent", by="reproducer")
         with mock.patch("proveit.store.time.time", return_value=1042.5):
             actions.decide("R-001", "close", "human", "maintainer")
-        self.assertEqual(actions.maintainer_seconds(store.load("R-001")), 42.5)
+        self.assertEqual(actions.decision_seconds(store.load("R-001")), 42.5)
         t = actions.tally()
-        self.assertEqual(t["per_report"][0]["maintainer_seconds"], 42.5)
+        self.assertEqual(t["per_report"][0]["seconds_to_decision"], 42.5)
+        self.assertIn("time to decision 42.5 s", actions.tally_text(t))
+        self.assertNotIn("maintainer time", actions.tally_text(t))
+        self.assertIn("42 s from triage to decision (elapsed time, not effort)", messages.cost_line(store.load("R-001")))
         self.assertEqual(t["per_report"][0]["agent_cost"], "not recorded")
         self.assertIn("agent cost not recorded", actions.tally_text(t))
         self.assertIn("agent cost not recorded", messages.cost_line(store.load("R-001")))
 
-    def test_undecided_has_no_maintainer_time(self):
+    def test_undecided_has_no_time_to_decision(self):
         agent = self.make_intake()
         self.report(agent, VALID)
-        self.assertIsNone(actions.maintainer_seconds(store.load("R-001")))
+        self.assertIsNone(actions.decision_seconds(store.load("R-001")))
         self.assertIn("not decided", actions.tally_text())
 
     def test_recorded_cost(self):

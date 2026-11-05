@@ -1,13 +1,13 @@
-# scripts/e2e.py against Switch 0.31.0 (scripts/switch-server.sh up), Windows 11 + Docker Desktop 29.6.2, 2026-11-05T06:58:16Z
-# Commit under test: 9370c8e plus the working tree of this PR. Tokens: none printed; agent ids are local to that throwaway server.
+# scripts/e2e.py against Switch 0.31.0 (scripts/switch-server.sh up), Windows 11 + Docker Desktop 29.6.2, 2026-11-05T07:10:00Z
+# Commit under test: 71f26a0. Tokens: none printed; agent ids are local to that throwaway server; local temp paths shortened to <tmp>.
 Switch server: http://127.0.0.1:18000 (settings from .proveit/switch-server/.env)
-Registered agent e2e-intake-122817 (a8dc4c64-0418-4085-89f0-c75eb38fbfea)
-Opened e2e-intake-122817 to everyone in its rooms, so reporters can reach it
-Saved credentials to <tmp>\proveit-e2e-vfdn5fy7\state\intake.json (git-ignored)
-Rooms ready: e2e-intake-122817, e2e-triage-122817 (linked as 'triage')
+Registered agent e2e-intake-124000 (60602eaa-eb42-4924-9218-715097fd97d0)
+Opened e2e-intake-124000 to everyone in its rooms, so reporters can reach it
+Saved credentials to <tmp>\proveit-e2e-hf0tthxw\state\intake.json (git-ignored)
+Rooms ready: e2e-intake-124000, e2e-triage-124000 (linked as 'triage')
 
 Next: python -m proveit.intake run
-$ proveit.intake setup --env-file .proveit/switch-server/.env --api-url http://127.0.0.1:18000 --agent-name e2e-intake-122817 --intake-room e2e-intake-122817 --triage-room e2e-triage-122817 --create-rooms --users user
+$ proveit.intake setup --env-file .proveit/switch-server/.env --api-url http://127.0.0.1:18000 --agent-name e2e-intake-124000 --intake-room e2e-intake-124000 --triage-room e2e-triage-124000 --create-rooms --users user
 reporter posted 01-real-cve-2020-14343.md
 reporter posted 02-slop-safe-load-rce.md
 reporter posted 03-slop-billion-laughs.md
@@ -23,4 +23,4 @@ PASS R-004: quarantined (expected quarantined)
 PASS reporter thread 04 got 'held for review'
 PASS R-004: escalate refused while quarantined
 
-E2E PASSED (work dir <tmp>\proveit-e2e-vfdn5fy7)
+E2E PASSED (work dir <tmp>\proveit-e2e-hf0tthxw)

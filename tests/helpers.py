@@ -38,7 +38,7 @@ class WorkDirTest(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def make_intake(self):
-        agent = intake.Intake({"agent_name": "prove-it-intake"}, source="test")
+        agent = intake.Intake({"agent_name": "prove-it-intake", "maintainers": ["maintainer"]}, source="test")
         agent.intake, agent.triage = FakeRoom(), FakeRoom()
         self._n = getattr(self, "_n", 0)
         return agent

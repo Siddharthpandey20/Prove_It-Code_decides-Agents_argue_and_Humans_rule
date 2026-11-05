@@ -52,7 +52,8 @@ def main():
     server_env = read_env(args.env_file)
     run(py + ["proveit.intake", "setup", "--env-file", args.env_file, "--api-url", args.api_url,
               "--agent-name", agent, "--intake-room", intake_room, "--triage-room", triage_room,
-              "--create-rooms", "--users", server_env["MATTERMOST_USER"]])
+              "--create-rooms", "--users", server_env["MATTERMOST_USER"],
+              "--maintainers", server_env["MATTERMOST_USER"]])
 
     log = open(tmp / "intake.log", "w")
     intake = subprocess.Popen(py + ["proveit.intake", "run", "--auto-check"], cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)

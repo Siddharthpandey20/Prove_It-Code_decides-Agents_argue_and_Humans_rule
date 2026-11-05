@@ -10,10 +10,12 @@ Finding numbers (F1 to F31) refer to the assessment.
 
 ## A. Only maintainers decide (F1)
 
-- [ ] A1 Triage room is private in the template (`channel_type: channel_private`); intake room stays public.
-- [ ] A2 Intake accepts `escalate` / `close` / `override` / `release` only from maintainers on an allowlist (`maintainers` in `.proveit/intake.json`, set by `setup --maintainers`, default the deployer); everyone else gets a refusal.
-- [ ] A3 Read-only commands (`status`, `tally`, `evidence`) stay open to anyone in triage.
-- [ ] A4 Tests: an outsider's `close` / `escalate` / `override` / `release` are refused and the ticket is unchanged; a listed maintainer still decides.
+- [x] A1 Triage room is private in the template (`channel_type: channel_private`); intake room stays public.
+- [x] A2 Intake accepts `escalate` / `close` / `override` / `release` only from maintainers on an allowlist (`maintainers` in `.proveit/intake.json`, set by `setup --maintainers`, default the deployer); everyone else gets a refusal.
+- [x] A3 Read-only commands (`status`, `tally`, `evidence`) stay open to anyone in triage.
+- [x] A4 Tests: an outsider's `close` / `escalate` / `override` / `release` are refused and the ticket is unchanged; a listed maintainer still decides.
+
+  Evidence: `tests/test_intake.py` (`test_outsider_in_triage_cannot_decide`, `test_outsider_can_still_read`, `test_no_maintainers_configured_refuses_everyone`); rehearsal step 4 shows `someone-else` refused; template with `channel_type: channel_private` accepted by Switch 0.31.0 `/templates/validate` (no errors, no warnings).
 
 ## B. Agent roles and lockdowns (F2, F3, F4)
 

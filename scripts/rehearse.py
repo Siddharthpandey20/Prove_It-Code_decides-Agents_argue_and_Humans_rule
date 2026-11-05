@@ -56,7 +56,7 @@ def rehearse(work):
     config.WORK_DIR = work
     replays = ROOT / "reports" / "replays"
 
-    intake = Intake({"agent_name": "prove-it-intake"}, source="rehearsal")
+    intake = Intake({"agent_name": "prove-it-intake", "maintainers": ["maintainer"]}, source="rehearsal")
     intake.intake, intake.triage = Room("proveit-intake"), Room("proveit-triage")
     counter = {"n": 0}
 
@@ -67,10 +67,10 @@ def rehearse(work):
             "body": text, "message_id": mid, "thread_id": thread, "sender_name": "replay-reporter", "sender_kind": "user"}})
         return mid
 
-    def maintainer(text):
-        print("  [maintainer in #proveit-triage] " + text)
+    def maintainer(text, who="maintainer"):
+        print("  [%s in #proveit-triage] %s" % (who, text))
         intake.on_triage_event(None, "message", {"payload": {
-            "body": text, "message_id": "t", "thread_id": None, "sender_name": "maintainer", "sender_kind": "user"}})
+            "body": text, "message_id": "t", "thread_id": None, "sender_name": who, "sender_kind": "user"}})
 
     def skeptic(tid):
         """Scripted stand-in for the Skeptic: dispute if the checklist raises any note, else concur."""
@@ -102,6 +102,7 @@ def rehearse(work):
         skeptic(tid)
 
     print("\n== 4. Maintainer decides")
+    maintainer("@prove-it-intake close R-001 not a bug", who="someone-else")  # refused: not a maintainer
     maintainer("@prove-it-intake escalate R-001")           # refused: disputed
     print("-- maintainer: @prove-it-reproducer retry R-001 on the patched build")
     proveit(["check", "R-001", "--build", "patched", "--by", "reproducer"], work, agent=True)

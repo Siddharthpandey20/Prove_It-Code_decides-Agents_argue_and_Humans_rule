@@ -35,6 +35,8 @@ from .switch_client import Agent, SwitchError, open_to_everyone, register_agent
 log = logging.getLogger("proveit.intake")
 STATE_FILE = Path(os.environ.get("PROVEIT_STATE", REPO_ROOT / ".proveit" / "intake.json"))
 TRIAGE_LINK_LABEL = "triage"
+# Decisions only the maintainers listed in the state file may make.
+HUMAN_ONLY = ("escalate", "close", "release", "override")
 
 DEFAULTS = {
     "agent_name": "prove-it-intake",
@@ -68,6 +70,11 @@ def read_env(path):
             key, _, value = line.partition("=")
             values[key.strip()] = value.strip().strip('"')
     return values
+
+
+def split_names(text):
+    """'alice, @bob' -> ['alice', 'bob']"""
+    return [n.strip().lstrip("@") for n in (text or "").split(",") if n.strip().lstrip("@")]
 
 
 def load_state():
@@ -119,8 +126,14 @@ def cmd_setup(args):
     for key in ("intake_room", "triage_room", "reproducer", "skeptic"):
         if getattr(args, key):
             state[key] = getattr(args, key)
+    state["maintainers"] = split_names(args.maintainers)
     save_state(state)
     print("Saved credentials to %s (git-ignored)" % STATE_FILE)
+    if state["maintainers"]:
+        print("Maintainers who may decide: %s" % ", ".join(state["maintainers"]))
+    else:
+        print("WARNING: no maintainers set, so Intake will refuse every escalate/close/override/release. "
+              "Add yours: python -m proveit.intake maintainers add <your Mattermost username>")
 
     if args.create_rooms:
         agent = Agent(api_url, reg["id"], reg["api_key"])
@@ -181,6 +194,7 @@ class Intake:
         self.auto_check = auto_check
         self.source = source
         self.names = {state["agent_name"]}
+        self.maintainers = {n.lower() for n in state.get("maintainers") or []}
         self.lock = threading.RLock()
         self.intake = None   # anything with .post(body, thread_id=None)
         self.triage = None
@@ -188,6 +202,9 @@ class Intake:
     # -- helpers -------------------------------------------------------------
     def mention(self):
         return "@" + self.state["agent_name"]
+
+    def is_maintainer(self, name):
+        return bool(name) and name.lstrip("@").lower() in self.maintainers
 
     def is_self(self, payload):
         return payload.get("sender_name") in self.names
@@ -324,12 +341,22 @@ class Intake:
                                  "`release R-001`, `evidence R-001`, `status`, `tally`.", thread)
                 return
             verb, ticket_id, rest = match.group(1).lower(), match.group(2), match.group(3).strip()
-            human_only = verb in ("escalate", "close", "release", "override")
+            human_only = verb in HUMAN_ONLY
+            who = payload.get("sender_name", "")
             if human_only and self.is_agent(payload):
                 # Only people decide; agents' opinions stay opinions.
                 self.triage.post("Refused: only maintainers can %s a ticket, and that request came from an agent." % verb, thread)
                 return
-            who = payload.get("sender_name", "a maintainer")
+            if human_only and not self.is_maintainer(who):
+                # Being in the room is not enough: only the maintainers listed in Intake's settings decide.
+                if self.maintainers:
+                    self.triage.post("Refused: only Prove It's maintainers can %s a ticket, and @%s is not one of them. "
+                                     "A maintainer can add you on the host: `python -m proveit.intake maintainers add %s`."
+                                     % (verb, who or "?", who or "<name>"), thread)
+                else:
+                    self.triage.post("Refused: no maintainers are configured, so nobody can %s yet. On the host run "
+                                     "`python -m proveit.intake maintainers add <your Mattermost username>`." % verb, thread)
+                return
             if verb == "status":
                 self.triage.post(self.status_text(), thread)
                 return
@@ -384,6 +411,23 @@ class Intake:
                                                       r.get("entry_point") or "-") for r in tickets)
 
 
+def cmd_maintainers(args):
+    state = load_state()
+    current = list(state.get("maintainers") or [])
+    names = split_names(",".join(args.names))
+    if args.action in ("add", "remove") and not names:
+        sys.exit("Give one or more Mattermost usernames.")
+    if args.action == "add":
+        current += [n for n in names if n.lower() not in {c.lower() for c in current}]
+    elif args.action == "remove":
+        current = [c for c in current if c.lower() not in {n.lower() for n in names}]
+    if args.action != "list":
+        state["maintainers"] = current
+        save_state(state)
+        print("Saved. Restart `python -m proveit.intake run` for the change to apply.")
+    print("Maintainers: %s" % (", ".join(current) or "none (every decision is refused)"))
+
+
 def cmd_run(args):
     from . import sandbox
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
@@ -414,7 +458,13 @@ def main(argv=None):
     p.add_argument("--create-rooms", action="store_true", help="create and link the two rooms (without the template)")
     p.add_argument("--with-agents", action="store_true", help="with --create-rooms, also add the reproducer and skeptic")
     p.add_argument("--users", help="with --create-rooms, comma-separated usernames to add")
+    p.add_argument("--maintainers", help="comma-separated Mattermost usernames allowed to escalate, close, override "
+                                         "and release (you, the deployer, at least)")
     p.set_defaults(fn=cmd_setup)
+    p = sub.add_parser("maintainers", help="list, add or remove the people allowed to decide")
+    p.add_argument("action", choices=["list", "add", "remove"], nargs="?", default="list")
+    p.add_argument("names", nargs="*", help="Mattermost usernames")
+    p.set_defaults(fn=cmd_maintainers)
     p = sub.add_parser("run", help="connect to the rooms and work")
     p.add_argument("--auto-check", action="store_true",
                    help="DEVELOPER/TEST ONLY: Intake runs the vulnerable-build check itself (used by scripts/e2e.py "

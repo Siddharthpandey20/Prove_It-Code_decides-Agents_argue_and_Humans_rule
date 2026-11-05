@@ -97,6 +97,41 @@ class RoomCommands(WorkDirTest):
         self.assertEqual(store.load(tid)["status"], "reproduced")
         self.assertIn("Refused: only maintainers can escalate", agent.triage.text())
 
+    def test_outsider_in_triage_cannot_decide(self):
+        # Being in the room is not enough: only listed maintainers decide.
+        agent = self.make_intake()
+        tid = self.ticket_in_triage(agent)
+        with stub_runs("CODE_EXECUTION"):
+            actions.check(tid, actor="agent", by="reproducer")
+        before = store.load(tid)
+        for verb in ("escalate", "close", "override", "release"):
+            self.say(agent, "@prove-it-intake %s %s spam" % (verb, tid), sender="random-reporter")
+        after = store.load(tid)
+        self.assertEqual(after["status"], "reproduced")
+        self.assertEqual(after["timeline"], before["timeline"])
+        self.assertEqual(agent.triage.text().count("@random-reporter is not one of them"), 4)
+
+    def test_outsider_can_still_read(self):
+        agent = self.make_intake()
+        tid = self.ticket_in_triage(agent)
+        self.say(agent, "@prove-it-intake status", sender="random-reporter")
+        self.say(agent, "@prove-it-intake evidence %s" % tid, sender="random-reporter")
+        self.assertIn(tid, agent.triage.text())
+        self.assertIn("Evidence pack %s" % tid, agent.triage.text())
+
+    def test_maintainer_names_match_case_and_at_sign(self):
+        agent = self.make_intake()
+        self.assertTrue(agent.is_maintainer("@Maintainer"))
+        self.assertFalse(agent.is_maintainer(""))
+
+    def test_no_maintainers_configured_refuses_everyone(self):
+        agent = Intake({"agent_name": "prove-it-intake"}, source="test")
+        agent.intake, agent.triage = FakeRoom(), FakeRoom()
+        tid = self.ticket_in_triage(agent)
+        self.say(agent, "@prove-it-intake close %s x" % tid)
+        self.assertNotEqual(store.load(tid)["status"], "closed")
+        self.assertIn("no maintainers are configured", agent.triage.text())
+
     def test_dispute_blocks_escalate_until_override(self):
         agent = self.make_intake()
         tid = self.ticket_in_triage(agent)

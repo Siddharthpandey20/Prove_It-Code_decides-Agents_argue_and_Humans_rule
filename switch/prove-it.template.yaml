@@ -139,6 +139,7 @@ rooms:
   - name: proveit-intake
     description: Report a security bug in PyYAML here. You will be asked for a proof as data (entry point + YAML payload).
     bridge: "{bridge}"
+    channel_type: channel_public   # anyone may report
     agents: [prove-it-intake]
     users: ["{$creator}"]
     instructions: |
@@ -150,6 +151,8 @@ rooms:
   - name: proveit-triage
     description: Maintainers and agents. Tickets arrive here with proof, not opinions.
     bridge: "{bridge}"
+    # Private: reporters must not be able to join the room where tickets are decided.
+    channel_type: channel_private
     agents: [prove-it-intake, prove-it-reproducer, prove-it-skeptic]
     users: ["{$creator}"]
     instructions: |

@@ -4,10 +4,13 @@ Used to record the demo and to test the whole flow end to end. Every report
 it posts is a replay and says so in its Reporter line.
 
   python scripts/replay.py login                save a Mattermost login to post with (asks for it)
+  python scripts/replay.py --as maintainer login   save a second login, e.g. the deployer, to steer agents
+  python scripts/replay.py --as maintainer say triage "@prove-it-reproducer check R-001"
   python scripts/replay.py report 01            post reports/replays/01-*.md
   python scripts/replay.py followup 02          reply to report 02's thread with its follow-up
   python scripts/replay.py say triage "@prove-it-intake close R-002 fake proof"
   python scripts/replay.py thread 01            print the thread of report 01
+  python scripts/replay.py read triage 20       print the last 20 posts in a room (with their senders)
 
 The login comes from MM_URL / MM_USER / MM_PASSWORD, the one saved by
 `login` (kept in ~/.proveit/<checkout>/, outside the checkout), or a server
@@ -84,10 +87,10 @@ class Mattermost:
 
 
 def settings(args):
-    login = find_login(read_env(args.env_file) if args.env_file else None)
+    login = find_login(read_env(args.env_file) if args.env_file else None, profile=args.profile)
     if not login:
-        sys.exit("No Mattermost login found. Run `python scripts/replay.py login`, set MM_USER and MM_PASSWORD, "
-                 "or pass --env-file.")
+        sys.exit("No Mattermost login found for %r. Run `python scripts/replay.py --as %s login`, set MM_USER and "
+                 "MM_PASSWORD, or pass --env-file." % (args.profile, args.profile))
     return login["url"], login["user"], login["password"]
 
 
@@ -98,7 +101,7 @@ def login(args):
     user = input("Mattermost username: ").strip()
     password = getpass.getpass("Password for %s: " % user)
     Mattermost(url, user, password)  # fails loudly if the login is wrong
-    print("Logged in. Saved to %s (outside the checkout)." % save_login(user, password, url))
+    print("Logged in as %s. Saved to %s (outside the checkout)." % (user, save_login(user, password, url, args.profile)))
 
 
 def replay_file(number, suffix=".md"):
@@ -116,9 +119,11 @@ def load_posted():
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--env-file")
+    parser.add_argument("--as", dest="profile", default="reporter",
+                        help="which saved login to use (default: reporter); `--as maintainer login` saves another")
     parser.add_argument("--intake", default="proveit-intake")
     parser.add_argument("--triage", default="proveit-triage")
-    parser.add_argument("action", choices=["login", "report", "followup", "say", "thread"])
+    parser.add_argument("action", choices=["login", "report", "followup", "say", "thread", "read"])
     parser.add_argument("target", nargs="?")
     parser.add_argument("text", nargs="?")
     args = parser.parse_args()
@@ -145,6 +150,16 @@ def main():
         room = {"intake": args.intake, "triage": args.triage}.get(args.target, args.target)
         mm.post(mm.channel(room), args.text)
         print("said in %s" % room)
+    elif args.action == "read":
+        room = {"intake": args.intake, "triage": args.triage}.get(args.target, args.target)
+        page = mm.call("GET", "/channels/%s/posts?per_page=%d" % (mm.channel(room), int(args.text or 20)))
+        names = {}
+        for pid in reversed(page["order"]):
+            p = page["posts"][pid]
+            if p["user_id"] not in names:
+                names[p["user_id"]] = mm.call("GET", "/users/%s" % p["user_id"])["username"]
+            print("--- %s %s%s\n%s" % (time.strftime("%H:%M:%S", time.localtime(p["create_at"] / 1000)), names[p["user_id"]],
+                                     " (reply)" if p.get("root_id") else "", p["message"][:2000]))
     elif args.action == "thread":
         root = posted.get(args.target) or sys.exit("Post report %s first" % args.target)
         thread = mm.call("GET", "/posts/%s/thread" % root)

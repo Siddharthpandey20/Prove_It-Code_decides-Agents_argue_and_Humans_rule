@@ -112,6 +112,15 @@ class ReplayLogin(unittest.TestCase):
         with mock.patch.dict(os.environ, {"MM_USER": "e", "MM_PASSWORD": "p", "MM_URL": "http://env"}):
             self.assertEqual((replay_login.find_login()["user"], replay_login.find_login()["url"]), ("e", "http://env"))
 
+    def test_named_profiles_are_separate(self):
+        replay_login.save_login("rep", "pw", "http://127.0.0.1:52572")
+        replay_login.save_login("user", "pw2", "http://127.0.0.1:52572", profile="maintainer")
+        self.assertEqual(replay_login.find_login()["user"], "rep")
+        self.assertEqual(replay_login.find_login(profile="maintainer")["user"], "user")
+        self.assertIsNone(replay_login.find_login(profile="other"))
+        with self.assertRaises(ValueError):
+            replay_login.login_file("../x")
+
     def test_nothing_found(self):
         self.assertIsNone(replay_login.find_login())
 

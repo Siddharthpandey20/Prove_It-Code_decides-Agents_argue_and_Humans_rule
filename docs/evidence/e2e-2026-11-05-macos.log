@@ -1,0 +1,29 @@
+# scripts/e2e.py against Switch 0.31.0 (scripts/switch-server.sh up), macOS 27.2 arm64 + Colima (Docker 29.5.2), 2026-11-05T12:10:51Z
+# Branch fix/checkpoint-2026-11-05, commit under test: b3c0e47. Intake runs with --auto-check (developer/test flag): no LLM agents are in these rooms.
+# Tokens: none printed; agent ids are local to that throwaway server; local temp paths shortened to <tmp>.
+Switch server: http://127.0.0.1:18000 (settings from .proveit/switch-server/.env)
+Registered agent e2e-intake-174001 (7ba70e65-46a4-475e-8363-521b33308e87)
+Opened e2e-intake-174001 to everyone in its rooms, so reporters can reach it
+Saved credentials to <tmp>/proveit-e2e-2_0ztm_4/state/intake.json (outside the checkout, never committed)
+Maintainers who may decide: user
+Rooms ready: e2e-intake-174001, e2e-triage-174001 (linked as 'triage')
+
+Next: python -m proveit.intake run
+$ proveit.intake setup --env-file .proveit/switch-server/.env --api-url http://127.0.0.1:18000 --agent-name e2e-intake-174001 --intake-room e2e-intake-174001 --triage-room e2e-triage-174001 --create-rooms --users user --maintainers user
+reporter posted 01-real-cve-2020-14343.md
+reporter posted 02-slop-safe-load-rce.md
+reporter posted 03-slop-billion-laughs.md
+reporter posted 04-injection-attempt.md
+reporter posted the follow-up PoC for 02
+PASS R-001: escalated (expected escalated), sandbox: CODE_EXECUTION
+PASS reporter thread 01 got 'confirmed by a maintainer'
+PASS R-002: closed (expected closed), sandbox: NOT_REPRODUCED
+PASS reporter thread 02 got 'closed by a maintainer'
+PASS R-003: closed (expected closed), sandbox: NOT_REPRODUCED
+PASS reporter thread 03 got 'closed by a maintainer'
+PASS R-004: quarantined (expected quarantined)
+PASS reporter thread 04 got 'held for review'
+PASS R-004: escalate refused while quarantined
+PASS R-001: escalate refused before any review
+
+E2E PASSED (work dir <tmp>/proveit-e2e-2_0ztm_4)

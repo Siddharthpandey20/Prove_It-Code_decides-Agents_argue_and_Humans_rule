@@ -16,6 +16,17 @@ from . import config
 
 LOGIN_FILE = config.PROVEIT_HOME / "reporter.json"
 LEGACY_LOGIN_FILE = config.LEGACY_STATE_DIR / "reporter.json"
+DEFAULT_PROFILE = "reporter"
+
+
+def login_file(profile=DEFAULT_PROFILE):
+    """reporter.json for the default profile (the account replays are posted as), <profile>.json otherwise
+    (for example a maintainer account to steer the agents with)."""
+    if profile in (None, "", DEFAULT_PROFILE):
+        return LOGIN_FILE
+    if not profile.replace("-", "").isalnum():
+        raise ValueError("a profile name is letters, digits and dashes")
+    return LOGIN_FILE.with_name("%s.json" % profile)
 
 
 def _console_roots():
@@ -46,9 +57,16 @@ def _read_json(path):
         return {}
 
 
-def find_login(env_file_values=None):
+def find_login(env_file_values=None, profile=DEFAULT_PROFILE):
     """{"url", "user", "password", "source"} or None."""
     env_file_values = env_file_values or {}
+    named = login_file(profile)
+    if named != LOGIN_FILE:  # a named profile is only ever its own saved file
+        saved = _read_json(named)
+        if not (saved.get("username") and saved.get("password")):
+            return None
+        url = saved.get("url") or "http://127.0.0.1:%s" % (console_mattermost_port() or 8065)
+        return {"url": url.rstrip("/"), "user": saved["username"], "password": saved["password"], "source": str(named)}
     saved_path = LOGIN_FILE if _read_json(LOGIN_FILE) else LEGACY_LOGIN_FILE
     saved = _read_json(saved_path)
     if os.environ.get("MM_USER") and os.environ.get("MM_PASSWORD"):
@@ -70,11 +88,12 @@ def find_login(env_file_values=None):
     return {"url": url.rstrip("/"), "user": user, "password": password, "source": source}
 
 
-def save_login(user, password, url):
+def save_login(user, password, url, profile=DEFAULT_PROFILE):
     config.ensure_home()
-    LOGIN_FILE.write_text(json.dumps({"username": user, "password": password, "url": url}, indent=2), encoding="utf-8")
+    path = login_file(profile)
+    path.write_text(json.dumps({"username": user, "password": password, "url": url}, indent=2), encoding="utf-8")
     try:
-        os.chmod(LOGIN_FILE, 0o600)
+        os.chmod(path, 0o600)
     except OSError:
         pass
-    return LOGIN_FILE
+    return path

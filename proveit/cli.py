@@ -138,6 +138,8 @@ def main(argv=None):
     p = sub.add_parser("tally"); p.add_argument("--json", action="store_true"); p.set_defaults(fn=cmd_tally)
     p = sub.add_parser("submit"); p.add_argument("file"); p.set_defaults(fn=cmd_submit)
     args = parser.parse_args(argv)
+    if args.cmd in ("override", "cost") and actor() != "human":
+        sys.exit("refused: only humans may %s; this shell runs as an agent (PROVEIT_ACTOR=agent)" % args.cmd)
     try:
         args.fn(args)
     except states.IllegalTransition as exc:

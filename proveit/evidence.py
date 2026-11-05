@@ -35,7 +35,7 @@ def pack(record):
 def text(p):
     t = p["ticket"]
     lines = ["Evidence pack %s (status: %s)" % (t["id"], t["status"]),
-             "claim %s · claimed severity %s · entry point %s · payload sha256 %s (%s bytes)" % (
+             "claim %s | claimed severity %s | entry point %s | payload sha256 %s (%s bytes)" % (
                  t.get("claim") or "-", t.get("severity") or "-", t.get("entry_point") or "-",
                  (t.get("payload_sha256") or "-")[:16], t.get("payload_bytes")),
              "tags: %s" % (", ".join(t.get("tags") or []) or "none")]

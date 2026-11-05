@@ -89,8 +89,8 @@ def facts(record, vulnerable, patched):
         "reproduces_on_patched_too": None if patched is None or outcome is None else (
             outcome in REPRODUCING and patched_outcome in REPRODUCING),
         "claimed_severity": severity,
-        "severity_supported_by_outcome": None if outcome is None or severity in (None, "unrated") else (
-            ceiling is not None and SEVERITY_RANK.get(severity, 0) <= SEVERITY_RANK[ceiling]),
+        "severity_supported_by_outcome": None if outcome not in REPRODUCING or severity in (None, "unrated") else (
+            SEVERITY_RANK.get(severity, 0) <= SEVERITY_RANK[ceiling]),
     }
 
 

@@ -1,0 +1,26 @@
+# scripts/e2e.py against Switch 0.31.0 (scripts/switch-server.sh up), Windows 11 + Docker Desktop 29.6.2, 2026-11-05T06:58:16Z
+# Commit under test: 9370c8e plus the working tree of this PR. Tokens: none printed; agent ids are local to that throwaway server.
+Switch server: http://127.0.0.1:18000 (settings from .proveit/switch-server/.env)
+Registered agent e2e-intake-122817 (a8dc4c64-0418-4085-89f0-c75eb38fbfea)
+Opened e2e-intake-122817 to everyone in its rooms, so reporters can reach it
+Saved credentials to <tmp>\proveit-e2e-vfdn5fy7\state\intake.json (git-ignored)
+Rooms ready: e2e-intake-122817, e2e-triage-122817 (linked as 'triage')
+
+Next: python -m proveit.intake run
+$ proveit.intake setup --env-file .proveit/switch-server/.env --api-url http://127.0.0.1:18000 --agent-name e2e-intake-122817 --intake-room e2e-intake-122817 --triage-room e2e-triage-122817 --create-rooms --users user
+reporter posted 01-real-cve-2020-14343.md
+reporter posted 02-slop-safe-load-rce.md
+reporter posted 03-slop-billion-laughs.md
+reporter posted 04-injection-attempt.md
+reporter posted the follow-up PoC for 02
+PASS R-001: escalated (expected escalated), sandbox: CODE_EXECUTION
+PASS reporter thread 01 got 'confirmed by a maintainer'
+PASS R-002: closed (expected closed), sandbox: NOT_REPRODUCED
+PASS reporter thread 02 got 'closed by a maintainer'
+PASS R-003: closed (expected closed), sandbox: NOT_REPRODUCED
+PASS reporter thread 03 got 'closed by a maintainer'
+PASS R-004: quarantined (expected quarantined)
+PASS reporter thread 04 got 'held for review'
+PASS R-004: escalate refused while quarantined
+
+E2E PASSED (work dir <tmp>\proveit-e2e-vfdn5fy7)

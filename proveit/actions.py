@@ -136,7 +136,7 @@ def tally_text(t=None):
         t["sandbox_runs"], t["sandbox_seconds"])]
     for row in t["per_report"]:
         ms = row["maintainer_seconds"]
-        lines.append("- %s %s · %s · maintainer time %s · agent cost %s" % (
+        lines.append("- %s %s | %s | maintainer time %s | agent cost %s" % (
             row["id"], row["status"].replace("_", " "), row["outcome"],
             "not decided" if ms is None else "%.1f s" % ms, row["agent_cost"]))
     return "\n".join(lines)

@@ -1,0 +1,66 @@
+# Commands the Skeptic must never run. Only `forbidden` decisions are used
+# here: an `allow` decision would run a command outside Codex's sandbox.
+# Format: https://learn.chatgpt.com/docs/agent-configuration/rules
+
+prefix_rule(
+    pattern = ["python", "-m", "proveit", "check"],
+    decision = "forbidden",
+    justification = "The Skeptic examines evidence (proveit evidence); it does not produce it.",
+    match = ["python -m proveit check R-001"],
+    not_match = ["python -m proveit evidence R-001"],
+)
+
+prefix_rule(
+    pattern = ["python", "-m", "proveit", "override"],
+    decision = "forbidden",
+    justification = "Only maintainers override a dispute.",
+    match = ["python -m proveit override R-001 --by x"],
+)
+
+prefix_rule(
+    pattern = ["python", "-m", "proveit", "cost"],
+    decision = "forbidden",
+    justification = "Only maintainers record agent cost.",
+    match = ["python -m proveit cost R-001 --usd 1 --source x"],
+)
+
+prefix_rule(
+    pattern = ["python", "-c"],
+    decision = "forbidden",
+    justification = "No ad hoc code: only the proveit commands.",
+    match = ["python -c 'print(1)'"],
+)
+
+prefix_rule(
+    pattern = ["curl"],
+    decision = "forbidden",
+    justification = "No network from the triage agents.",
+    match = ["curl https://example.com"],
+)
+
+prefix_rule(
+    pattern = ["wget"],
+    decision = "forbidden",
+    justification = "No network from the triage agents.",
+    match = ["wget https://example.com"],
+)
+
+prefix_rule(
+    pattern = ["docker"],
+    decision = "forbidden",
+    justification = "The Skeptic never runs containers.",
+    match = ["docker ps"],
+)
+
+prefix_rule(
+    pattern = ["cat", "work"],
+    decision = "forbidden",
+    justification = "Reporter material in work/*/private/ is off limits.",
+)
+
+prefix_rule(
+    pattern = ["rm"],
+    decision = "forbidden",
+    justification = "The Skeptic never deletes files.",
+    match = ["rm -rf work"],
+)

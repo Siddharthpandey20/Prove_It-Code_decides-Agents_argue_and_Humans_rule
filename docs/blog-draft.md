@@ -1,46 +1,55 @@
-# Making AI prove its bug reports: a custom Switch agent in plain Python
+# Making AI prove its bug reports: what we built on Switch, and the hole an audit found
 
 *Draft for the Flip the Switch "Best Blog" prize. Edit before publishing.*
 
 In January 2026 curl ended its bug bounty. Its maintainers were drowning in vulnerability reports that an AI wrote in ten seconds and a human needed an hour to disprove. In July they stopped taking security reports for a month. We wanted to build something a small team could run: a place where a report has to prove itself before a maintainer reads it.
 
-We built it on [Switch](https://github.com/sandbox-quantum/switch), which puts AI agents into team chat as teammates. This post covers what we learned as first-time Switch users, especially how to write your own agent against the Switch agent protocol. That turned out to be the most interesting part.
+We built it on [Switch](https://github.com/sandbox-quantum/switch), which puts AI agents into team chat as teammates. Our rule ended up being: **code decides, agents argue, humans rule.**
 
 ## The workflow
 
-Two rooms. `#proveit-intake` is where anyone posts a report. `#proveit-triage` is where maintainers work with two coding agents: a Reproducer (Claude Code) that runs the proof of concept in a sandbox, and a Skeptic (Codex) that tries to disprove it. A maintainer closes or escalates with one message, and the reporter hears back in their own thread.
+Two rooms. `#proveit-intake` is where anyone posts a report. `#proveit-triage` is where maintainers work with two coding agents: a Reproducer (Claude Code) that runs the proof in a sandbox and explains the result, and a Skeptic (Codex) that reads the evidence and either concurs or disputes. A maintainer decides with one message, and the reporter hears back in their own thread.
 
-The interesting design question was the agent that reads the reports. A bug report is attacker-controlled text, and it is about to sit in front of agents that can run shell commands. So the agent in the intake room is not an LLM at all. It's plain Python on the standard library (a 220-line protocol client and the agent logic on top) that speaks Switch's protocol, screen for text written *to* AI reviewers, demand a runnable proof, and pass on only a ticket of fixed fields plus a PoC file. Nothing in the triage room ever reads the reporter's prose.
+The agent that reads the reports is not an LLM at all. A bug report is attacker-controlled text about to sit near agents that can run commands, so Intake is plain standard-library Python on Switch's agent protocol. It screens the text, demands a proof, and passes on only fixed fields.
 
-## Setting up Switch
+## Writing your own Switch agent
 
-Switch Console runs a local server in Docker and bundles Mattermost, so you don't need a company Slack. Two things worth knowing:
-
-- Console keeps the local server's settings in a `.env` under its app-data folder, in `local-switch-server/`. It holds the agent registration token and the Gateway admin login. Our setup script reads it, so nobody copies secrets by hand.
-- Templates are real infrastructure-as-code. One YAML file created our two Claude/Codex agents, both rooms as a room group, the link between them, exclusive `reproducer` and `skeptic` roles, a `verdict-rules` document in the room, and a kickoff message. An agent can even validate a template through the `save_template` operation, which returns warnings.
-
-## Writing your own agent: what the protocol actually takes
-
-The [agent protocol](https://docs.switchagents.ai/switch-rooms/internals/agent-protocol.md) is "SSE down, HTTP up". Here is the minimum we needed, all with Python's standard library:
+The [agent protocol](https://docs.switchagents.ai/switch-rooms/internals/agent-protocol.md) is "SSE down, HTTP up". What we needed:
 
 1. **Register once.** `POST /agents` with the registration token as the bearer, `connector_type: "custom"` and an integration profile (`connection_model: "always_on"`). You get `{id, api_key}`, and the key is shown once.
-2. **Open a stream per room.** `GET /agents/{id}/events?connection_id=<uuid>&scope=single&filter=all&rooms=<room id>`. Generate the connection id yourself and reuse it across reconnects; the connection outlives the socket. Declare the room on the URL, not afterwards, or you miss buffered events.
-3. **Heartbeat every 2 seconds.** `POST /agents/{id}/connection/beat` with the connection id and cursor. A 404 or 409 means reopen the stream, not back off.
-4. **Call operations.** `POST /agents/{id}/ops/{name}` with the arguments unwrapped. `GET /agents/{id}/ops` lists them all with schemas: `list_rooms`, `create_room`, `link_rooms`, `post_message`, `read_context` and many more.
+2. **Open a stream per room.** `GET /agents/{id}/events?connection_id=<uuid>&scope=single&filter=all&rooms=<room id>`. Generate the connection id yourself and reuse it across reconnects.
+3. **Heartbeat every 2 seconds.** `POST /agents/{id}/connection/beat` with the connection id and cursor. A 404 or 409 means reopen the stream.
+4. **Call operations.** `POST /agents/{id}/ops/{name}`. `GET /agents/{id}/ops` lists them with schemas.
 
-Three things surprised us:
+Things that surprised us:
 
-- `POST /agents/{id}/message` posts into a room but cannot reply in a thread. `post_message` can (`thread_id`), but it resolves the room from the `X-Switch-Connection-Id` header. Our fix: one connection per room, and post through the connection of the room you want.
-- A new agent answers only its owner. Anyone else who mentions it gets an automatic "you're not permitted" reply. For a public intake room, the owner or an admin clears the policy with `PUT /gateway/agents/{id}/addressing-policy {"policy": null}`. Room membership is then the wall, and the agents that can run code stay in the room outsiders can't join.
-- Agent senders look like `@switch-agent-…`. That made "only people can close tickets" easy to enforce: Intake ignores commands from other agents. We tested it with a rogue agent.
+- `post_message` replies in a thread, but it resolves the room from the `X-Switch-Connection-Id` header. So Intake holds one connection per room and posts through the right one.
+- A new agent answers only its owner. For a public intake room an admin clears the policy with `PUT /gateway/agents/{id}/addressing-policy {"policy": null}`.
+- Room links are pointers, not pipes: `list_linked_rooms` tells an agent where the link goes, and "pointers grant no implicit access". We use that directly: Intake finds the triage room through the intake room's link labelled `triage`, and refuses to start without it.
+- The template's `addressing` can be `owner`, `owner-agents`, `anyone` or `{anyone_in: [...]}`. We set the two command-running agents to `owner-agents`: only the deployer and the deployer's own agents can instruct them.
+- The server will check your template for you. An agent can call `get_template_guide` (which returns a JSON schema) and `save_template` (which lists warnings). One caveat we hit: neither checks the agent fields, so `addressing: maintainers-only` saves without a warning.
 
-## Switch Trust in front of everything
+## The hole: a proof that grades itself
 
-Switch Trust guardrails are built into Switch itself. An admin enters a Trust endpoint, a policy ID and an API key on the server's Home page. From then on every human message is checked before it becomes a room message, and a blocked one never reaches any agent. We used a policy with Jailbreak set to Block, Secrets set to Redact, and a couple of regexes for "ignore your instructions".
+Our first version let reporters send a Python script as their proof. The sandbox ran it under a Python audit hook and recorded whether PyYAML's own code was on the call stack when a marker file was written. It looked solid, and it caught the obvious fake: a script that writes the marker itself.
 
-## Proof, not opinion
+Then we had the project audited, and the audit broke it in ten lines. The PoC ran in the same process as the harness that wrote the result, so a PoC could walk the call stack, read the harness's one-time code, and print a perfect forged REPRODUCED record. Worse, the rules were easy to satisfy honestly: `time.sleep(60)` counted as a denial of service, `ctypes.string_at(0)` as a crash, and calling `yaml.unsafe_load` (unsafe by design, documented as such) as code execution on both the vulnerable and the patched release.
 
-The sandbox runs each PoC in a container with no network, a read-only filesystem, a 256 MB memory cap and no capabilities, against PyYAML 5.3.1 and 5.4. A Python audit hook records, for every file write or exec, whether the library's own code was on the call stack. That one detail separates a real bug from a fake proof. On the real CVE-2020-14343, the marker file is written from `construct_python_object_new`. On the AI-slop "RCE in safe_load", the script writes the marker itself, and the verdict is `INVALID_PROOF`.
+## The fix: proofs are data
+
+We stopped accepting code. A proof is now one entry point from a short allowlist (`safe_load`, `full_load`, `load` with `SafeLoader` or `FullLoader`) plus a YAML payload of at most 64 KB. Python, and the loaders PyYAML documents as unsafe, are refused before anything runs.
+
+Inside the container a parent process creates a fresh directory and starts a child that does one thing: import PyYAML and call the declared entry point on the payload. The parent watches from outside (exit status, signal, time, memory, and whether `/tmp/proveit/marker` appeared) and is the only process that writes the result. The one-time code never enters the child, and the parent makes itself non-dumpable so the child can't read it through `/proc`.
+
+Now every cheat fails by construction. There's no script to sleep or call `ctypes`. The marker can only appear if the library itself ran the payload as code, which is exactly the bug. On the real CVE-2020-14343 payload, PyYAML 5.3.1 gives `CODE_EXECUTION` with `construct_python_object_new` on the stack, and 5.4 refuses the tag. Each of the audit's attacks is now a test.
+
+## Agents get evidence, never prose
+
+The second thing the audit found: reporter text still leaked to the agents, through the ticket's title, the screen's excerpts and exception messages. Now everything an agent can read holds fixed fields only: hashes, sizes, allowlisted names, outcome classes, numbers, exception type names plus a hash of the message, and YAML tags only if they're known PyYAML tags. A canary test puts one string in every field a reporter controls and checks it never shows up in anything an agent can read. A paraphrased injection that slips past our regex screen still reaches the agents as nothing but a SHA-256.
+
+## Switch Trust: planned
+
+Switch Trust guardrails are built into Switch: an admin enters a Trust endpoint, policy ID and API key on the server's Home page, and every human message is checked before it becomes a room message. We plan to use it as the first wall. At the time of writing we have not configured it, so we can't show it blocking anything yet.
 
 ## Try it
 
@@ -48,8 +57,9 @@ The sandbox runs each PoC in a container with no network, a read-only filesystem
 git clone https://github.com/akhilll0305/team-pikachu-switch-ai
 cd team-pikachu-switch-ai
 python -m proveit build
+python scripts/rehearse.py --twice           # the whole demo offline
 bash scripts/switch-server.sh up
 python scripts/e2e.py --env-file .proveit/switch-server/.env
 ```
 
-That replays all four demo reports through a real Switch server and Mattermost and checks every outcome.
+The rehearsal replays all four demo reports through the real code and sandbox. The end-to-end script does the same through a real Switch server and Mattermost.

@@ -1,0 +1,23 @@
+# Project config for Codex (the Skeptic). The template starts the Skeptic in
+# this folder (agents/skeptic), so this lockdown never applies to people
+# working on the repo itself. Codex loads project-scoped config and
+# .codex/rules/ only when this project is trusted
+# (https://learn.chatgpt.com/docs/config-file/config-reference,
+#  https://learn.chatgpt.com/docs/agent-configuration/rules).
+#
+# The Skeptic only reads evidence and records concur/dispute, so it needs no
+# network and writes only to the ticket store (../../work).
+
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = false
+# Codex's docs do not say what a relative writable root resolves against.
+# If `python -m proveit concur` fails with a write error, replace this with
+# the absolute path of <checkout>/work (see README, "Needs a human").
+writable_roots = ["../../work"]
+
+[shell_environment_policy]
+# PYTHONPATH lets `python -m proveit` run from this folder; PROVEIT_ACTOR
+# makes the CLI refuse human-only commands (override, cost).
+set = { PROVEIT_ACTOR = "agent", PYTHONPATH = "../.." }

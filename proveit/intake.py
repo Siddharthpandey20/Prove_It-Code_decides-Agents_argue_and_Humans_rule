@@ -5,13 +5,15 @@ It sits in two linked rooms:
   #proveit-intake   anyone can post a report here. Intake is the only agent
                     in the room, and it runs no code and has no shell.
   #proveit-triage   maintainers, the Reproducer (Claude Code) and the Skeptic
-                    (Codex). Intake posts structured tickets here and relays
-                    the maintainers' decisions back to the reporter's thread.
+                    (Codex). Intake finds this room through the intake room's
+                    Switch link labelled "triage", posts tickets of fixed
+                    fields here, and relays maintainers' decisions back to
+                    the reporter's thread.
 
 It deliberately has no language model. The one component that reads
-attacker-controlled prose is plain code that cannot be talked into anything:
-it screens the text, demands a runnable proof, and hands the agents in triage
-a ticket of fixed fields plus a PoC file that only ever runs in the sandbox.
+attacker-controlled prose is plain code: it screens the text, demands a
+proof in the data-only format (entry point + YAML payload), and hands
+triage a ticket with no reporter text in it.
 
   python -m proveit.intake setup   register the agent with a Switch server
   python -m proveit.intake run     connect to the rooms and work
@@ -26,12 +28,13 @@ import sys
 import threading
 from pathlib import Path
 
-from . import judge, reports, sandbox, screen, store
-from .config import PROOF_CONTRACT, REPO_ROOT, TARGET
+from . import actions, evidence, messages, reports, screen, states, store
+from .config import REPO_ROOT
 from .switch_client import Agent, SwitchError, open_to_everyone, register_agent
 
 log = logging.getLogger("proveit.intake")
 STATE_FILE = Path(os.environ.get("PROVEIT_STATE", REPO_ROOT / ".proveit" / "intake.json"))
+TRIAGE_LINK_LABEL = "triage"
 
 DEFAULTS = {
     "agent_name": "prove-it-intake",
@@ -39,13 +42,6 @@ DEFAULTS = {
     "triage_room": "proveit-triage",
     "reproducer": "prove-it-reproducer",
     "skeptic": "prove-it-skeptic",
-}
-
-CLAIM_WORDS = {
-    "code_execution": "code execution",
-    "denial_of_service": "denial of service",
-    "crash": "crash",
-    "info_leak": "information leak",
 }
 
 
@@ -137,29 +133,61 @@ def cmd_setup(args):
             state["triage_room"], "Maintainers and agents: tickets arrive here with proof, not opinions.",
             triage_agents, users)["id"]
         try:
-            agent.link_rooms(intake, triage, "triage")
+            agent.link_rooms(intake, triage, TRIAGE_LINK_LABEL)
         except SwitchError as exc:
             print("note: could not link rooms (%s)" % exc)
-        print("Rooms ready: %s, %s" % (state["intake_room"], state["triage_room"]))
+        print("Rooms ready: %s, %s (linked as %r)" % (state["intake_room"], state["triage_room"], TRIAGE_LINK_LABEL))
     print("\nNext: python -m proveit.intake run")
 
 
 # --------------------------------------------------------------------------
 # The agent
 # --------------------------------------------------------------------------
+def ticket_from_record(record):
+    """Rebuild the parse result for a stored ticket (its payload lives in private/)."""
+    return reports.Ticket(claim=record.get("claim", ""), severity=record.get("severity", "unrated"),
+                          entry_point=record.get("entry_point", ""), payload=store.payload(record["id"]),
+                          poc_problem=record.get("poc_problem", ""), missing=list(record.get("missing", [])))
+
+
+def fill(record, ticket):
+    """Copy only fixed fields from a parsed ticket into the agent-readable record."""
+    from . import poc
+    record.update({
+        "claim": ticket.claim, "severity": ticket.severity, "entry_point": ticket.entry_point,
+        "poc_problem": ticket.poc_problem, "missing": ticket.missing,
+        "payload_sha256": poc.sha256(ticket.payload) if ticket.payload else None,
+        "payload_bytes": len(ticket.payload.encode("utf-8", "surrogatepass")) if ticket.payload else 0,
+        "tags": poc.tags(ticket.payload),
+    })
+    if ticket.payload:
+        store.set_payload(record["id"], ticket.payload)
+
+
+def target_for(ticket):
+    if ticket.poc_problem:
+        return "invalid_proof"
+    if ticket.missing:
+        return "awaiting_poc"
+    return "in_triage"
+
+
 class Intake:
-    def __init__(self, state, auto_check=False):
+    COMMAND = re.compile(r"\b(escalate|close|release|override|evidence|status|tally)\b\s*(R-\d{3,})?\s*(.*)", re.I | re.S)
+
+    def __init__(self, state, auto_check=False, source="switch"):
         self.state = state
-        self.agent = Agent(state["api_url"], state["agent_id"], state["api_key"])
+        self.agent = Agent(state["api_url"], state["agent_id"], state["api_key"]) if state.get("api_url") else None
         self.auto_check = auto_check
+        self.source = source
         self.names = {state["agent_name"]}
-        self.lock = threading.Lock()
-        self.intake = None
+        self.lock = threading.RLock()
+        self.intake = None   # anything with .post(body, thread_id=None)
         self.triage = None
 
     # -- helpers -------------------------------------------------------------
-    def mention(self, who):
-        return "@" + self.state[who]
+    def mention(self):
+        return "@" + self.state["agent_name"]
 
     def is_self(self, payload):
         return payload.get("sender_name") in self.names
@@ -168,23 +196,38 @@ class Intake:
     def is_system(payload):
         return payload.get("sender_kind") == "platform" and not payload.get("on_behalf_of")
 
+    @staticmethod
+    def is_agent(payload):
+        return payload.get("sender_kind") == "agent" or str(payload.get("sender", "")).startswith("@switch-agent")
+
+    def linked_room(self, conn, label):
+        for link in self.agent.op("list_linked_rooms", {}, connection_id=conn.id) or []:
+            if link.get("label") == label:
+                return link.get("target_room_id")
+        return None
+
     def start(self):
         detail = self.agent.op("get_agent_detail", {"agent_id": self.agent.id}) or {}
         for key in ("name", "display_name"):
             if detail.get(key):
                 self.names.add(detail[key])
         intake_id = self.agent.room_id(self.state["intake_room"])
-        triage_id = self.agent.room_id(self.state["triage_room"])
-        if not intake_id or not triage_id:
-            sys.exit("Rooms %s / %s not found or %s is not in them. Deploy switch/prove-it.template.yaml "
-                     "in Switch Console, or run setup with --create-rooms." % (
-                         self.state["intake_room"], self.state["triage_room"], self.state["agent_name"]))
+        if not intake_id:
+            sys.exit("Room %s not found or %s is not in it. Deploy switch/prove-it.template.yaml in Switch Console, "
+                     "or run setup with --create-rooms." % (self.state["intake_room"], self.state["agent_name"]))
         self.intake = self.agent.connect(intake_id, self.on_intake_event)
+        if not self.intake.ready.wait(20):
+            sys.exit("Could not open the event stream for room %s" % intake_id)
+        # The triage room is wherever the intake room's Switch link labelled "triage" points.
+        triage_id = self.linked_room(self.intake, TRIAGE_LINK_LABEL)
+        if not triage_id:
+            sys.exit("#%s has no Switch room link labelled %r, so Intake does not know where to send tickets. "
+                     "Deploy switch/prove-it.template.yaml (it creates the link) or run setup with --create-rooms."
+                     % (self.state["intake_room"], TRIAGE_LINK_LABEL))
         self.triage = self.agent.connect(triage_id, self.on_triage_event)
-        for conn in (self.intake, self.triage):
-            if not conn.ready.wait(20):
-                sys.exit("Could not open the event stream for room %s" % conn.room_id)
-        log.info("Intake is listening in #%s and #%s", self.state["intake_room"], self.state["triage_room"])
+        if not self.triage.ready.wait(20):
+            sys.exit("Could not open the event stream for room %s" % triage_id)
+        log.info("Intake is listening in #%s and the room it links to as %r", self.state["intake_room"], TRIAGE_LINK_LABEL)
 
     # -- #proveit-intake -----------------------------------------------------
     def on_intake_event(self, conn, kind, frame):
@@ -203,131 +246,64 @@ class Intake:
             self.new_report(payload)
 
     def new_report(self, payload):
-        text, reporter, thread = payload["body"], payload.get("sender_name", "unknown"), payload["message_id"]
+        text, thread = payload["body"], payload["message_id"]
         result = screen.screen(text)
-        ticket = reports.parse(text, reporter)
-        record = store.create(ticket.to_dict(), text, source="switch")
-        record["intake_thread"] = thread
-        store.event(record, "received", "intake", reporter=reporter)
-
+        ticket = reports.parse(text)
+        record = store.create({}, text, source=self.source)
+        store.save_private_json(record["id"], "contact.json",
+                                {"intake_thread": thread, "reporter": payload.get("sender_name", "unknown")})
+        fill(record, ticket)
         if result.blocked:
-            record["screen"] = result.findings
-            store.set_status(record, "quarantined", "intake", why=result.summary())
-            self.intake.post(
-                "**%s held for review.** Your report contains text written to our AI reviewers rather than "
-                "about the bug (%s). It has not been shown to any agent. A maintainer will read it." %
-                (record["id"], result.summary()), thread)
-            rules = ", ".join(sorted({f["rule"] for f in result.findings}))
-            self.triage.post(
-                "**%s quarantined** at intake. Screen rules hit: `%s`. The reporter's text was not passed to any agent; "
-                "maintainers can read `work/%s/quarantine.md` on the host. Reply `%s release %s` to send it on, "
-                "or `%s close %s <reason>`." % (record["id"], rules, record["id"], self.mention("agent_name"), record["id"],
-                                                 self.mention("agent_name"), record["id"]))
+            self.quarantine(record, result, thread, "receive")
             return
+        self.route(record, ticket, thread, "receive")
 
-        if not ticket.complete():
-            store.set_status(record, "awaiting_poc", "intake", missing=ticket.missing)
-            self.intake.post(self.ask_for_proof(record["id"], ticket), thread)
-            return
+    def quarantine(self, record, result, thread, command):
+        record["screen_rules"] = sorted({f["rule"] for f in result.findings})
+        store.save_private_json(record["id"], "screen.json", result.findings)
+        store.apply(record, command, "intake", "intake", target="quarantined")
+        self.intake.post(messages.quarantined(record["id"]), thread)
+        self.triage.post(messages.quarantine_notice(record, self.mention()))
 
-        self.accept(record, thread)
+    def route(self, record, ticket, thread, command, actor="intake", by="intake"):
+        target = target_for(ticket)
+        store.apply(record, command, actor, by, target=target)
+        if target == "invalid_proof":
+            self.intake.post(messages.invalid_proof(record["id"], ticket.poc_problem), thread)
+        elif target == "awaiting_poc":
+            self.intake.post(messages.ask_for_proof(record["id"], ticket), thread)
+        else:
+            self.intake.post(messages.accepted(record["id"]), thread)
+            self.triage.post(messages.ticket_posted(record))
+            if self.auto_check:
+                threading.Thread(target=self.run_auto_check, args=(record["id"],), daemon=True).start()
 
     def followup(self, record, payload):
-        if record["status"] != "awaiting_poc":
-            self.intake.post("%s is %s. A maintainer will reply in this thread." % (record["id"], record["status"].replace("_", " ")),
-                             record["intake_thread"])
+        thread = store.load_private_json(record["id"], "contact.json").get("intake_thread")
+        if record["status"] not in ("awaiting_poc", "invalid_proof"):
+            self.intake.post("%s is %s. A maintainer will reply in this thread." % (
+                record["id"], record["status"].replace("_", " ")), thread)
             return
         text = payload["body"]
+        store.append_report(record["id"], text)
         result = screen.screen(text)
-        store.append_quarantine(record["id"], text)
+        merged = reports.merge(ticket_from_record(record), text)
+        fill(record, merged)
         if result.blocked:
-            record["screen"] = result.findings
-            store.set_status(record, "quarantined", "intake", why=result.summary())
-            self.intake.post("**%s held for review**: your follow-up contains text written to our AI reviewers (%s)." %
-                             (record["id"], result.summary()), record["intake_thread"])
-            self.triage.post("**%s quarantined** at intake (follow-up). Reply `%s release %s` to send it on." %
-                             (record["id"], self.mention("agent_name"), record["id"]))
+            self.quarantine(record, result, thread, "followup")
             return
-        previous = reports.Ticket(title=record.get("title", ""), reporter=record.get("reporter", ""),
-                                  claim=record.get("claim", ""), severity=record.get("severity", ""),
-                                  component=record.get("component", ""), poc=store.poc(record["id"]),
-                                  missing=record.get("missing", []))
-        merged = reports.merge(previous, text)
-        record.update({k: v for k, v in merged.to_dict().items() if k != "poc"})
-        if merged.poc:
-            store.set_poc(record["id"], merged.poc)
-        if not merged.complete():
-            store.set_status(record, "awaiting_poc", "intake", missing=merged.missing)
-            self.intake.post(self.ask_for_proof(record["id"], merged), record["intake_thread"])
-            return
-        self.accept(record, record["intake_thread"])
+        self.route(record, merged, thread, "followup")
 
-    def ask_for_proof(self, ticket_id, ticket):
-        lines = ["**%s received, but it cannot be checked yet.** Prove It only passes on reports with a runnable proof." % ticket_id]
-        if "claim" in ticket.missing:
-            lines.append("Say what the bug lets an attacker do: code execution, denial of service, a crash, or an information leak.")
-        if "poc" in ticket.missing:
-            lines.append("Reply in this thread with a Python proof of concept in a ```python block. It runs against "
-                         "%s %s in a sandbox with no network." % (TARGET["name"], TARGET["builds"]["vulnerable"]["version"]))
-        if ticket.claim in PROOF_CONTRACT:
-            lines.append("What counts as proof for %s: %s" % (CLAIM_WORDS[ticket.claim], PROOF_CONTRACT[ticket.claim]))
-        return "\n\n".join(lines)
-
-    def accept(self, record, thread):
-        store.set_status(record, "in_triage", "intake")
-        self.intake.post(
-            "**Received as %s.** Your proof of concept will run in an isolated sandbox against %s %s and the patched %s, "
-            "and the result will be posted in this thread after a maintainer reviews it." % (
-                record["id"], TARGET["name"], TARGET["builds"]["vulnerable"]["version"], TARGET["builds"]["patched"]["version"]), thread)
-        self.post_ticket(record)
-
-    def post_ticket(self, record):
-        tid = record["id"]
-        msg = (
-            "**Ticket %s** · claim `%s` · component `%s` · claimed severity `%s` · reporter `%s`\n"
-            "PoC: `work/%s/poc.py` (untrusted code: run it only through the sandbox commands below)\n\n"
-            "%s run `python -m proveit check %s --by reproducer` and post the verdict with its evidence.\n"
-            "%s once the Reproducer has posted, try to disprove it: `python -m proveit trace %s --by skeptic`. "
-            "Is the claimed code path reached inside the library, or did the PoC fake it?\n\n"
-            "Maintainers decide: `%s escalate %s` or `%s close %s <reason>`." % (
-                tid, record["claim"], record["component"], record["severity"], record.get("reporter", "?"), tid,
-                self.mention("reproducer"), tid, self.mention("skeptic"), tid,
-                self.mention("agent_name"), tid, self.mention("agent_name"), tid))
-        self.triage.post(msg)
-        if self.auto_check:
-            threading.Thread(target=self.run_check, args=(tid,), daemon=True).start()
-
-    def run_check(self, ticket_id):
-        """Without a Reproducer agent in the room, Intake runs the check itself."""
+    def run_auto_check(self, ticket_id):
+        """Developer/test mode only: Intake runs the vulnerable-build check itself, labelled as such."""
         try:
-            record = store.load(ticket_id)
-            code = store.poc(ticket_id)
-            vuln = sandbox.run_poc(code, "vulnerable")
-            patched = sandbox.run_poc(code, "patched")
-            paths = [store.save_run(ticket_id, vuln), store.save_run(ticket_id, patched)]
-            summary = judge.compare(record["claim"], vuln, patched)
-            record = store.load(ticket_id)
-            record["runs"] += [{"build": r["build"], "file": p, "at": store.now(), "by": "intake", "seconds": r.get("seconds")}
-                               for r, p in zip((vuln, patched), paths)]
-            record["last_check"] = dict(summary, at=store.now(), evidence=paths)
-            store.set_status(record, "reproduced" if summary["verdict"] == judge.REPRODUCED else "not_reproduced", "intake")
-            self.triage.post(self.format_check(ticket_id, summary, paths))
+            record, run, _ = actions.check(ticket_id, "vulnerable", actor="intake", by="intake (auto-check)")
+            self.triage.post(messages.auto_check(record, run))
         except Exception as exc:
-            log.exception("check failed")
-            self.triage.post("Sandbox check for %s failed: %s" % (ticket_id, exc))
+            log.exception("auto-check failed")
+            self.triage.post("Automatic check for %s failed: %s" % (ticket_id, type(exc).__name__))
 
-    @staticmethod
-    def format_check(ticket_id, summary, paths):
-        lines = ["**Sandbox check %s**" % ticket_id,
-                 "- vulnerable %s %s: **%s**" % (TARGET["name"], TARGET["builds"]["vulnerable"]["version"], summary["vulnerable"].upper()),
-                 "- patched %s %s: **%s**" % (TARGET["name"], TARGET["builds"]["patched"]["version"], summary.get("patched", "-").upper())]
-        lines += ["- " + r for r in summary["reasons"]]
-        lines.append("Evidence: " + ", ".join("`%s`" % p for p in paths))
-        return "\n".join(lines)
-
-    # -- #proveit-triage -------------------------------------------------------
-    COMMAND = re.compile(r"\b(escalate|close|release|status|tally)\b\s*(R-\d{3,})?\s*(.*)", re.I | re.S)
-
+    # -- #proveit-triage -----------------------------------------------------
     def on_triage_event(self, conn, kind, frame):
         if kind != "message":
             return
@@ -337,101 +313,84 @@ class Intake:
         body = payload.get("body", "")
         if not any(("@" + n) in body for n in self.names):
             return
-        if payload.get("sender_kind") == "agent" or str(payload.get("sender", "")).startswith("@switch-agent"):
-            return  # only people decide; agents' opinions stay opinions
+        self.handle_command(payload)
+
+    def handle_command(self, payload):
+        body, thread = payload.get("body", ""), payload.get("thread_id")
         match = self.COMMAND.search(body)
         with self.lock:
             if not match:
-                self.triage.post("Commands: `escalate R-001 [note]`, `close R-001 <reason>`, `release R-001`, `status`, `tally`.",
-                                 payload.get("thread_id"))
+                self.triage.post("Commands: `escalate R-001 [note]`, `close R-001 <reason>`, `override R-001 [note]`, "
+                                 "`release R-001`, `evidence R-001`, `status`, `tally`.", thread)
                 return
             verb, ticket_id, rest = match.group(1).lower(), match.group(2), match.group(3).strip()
+            human_only = verb in ("escalate", "close", "release", "override")
+            if human_only and self.is_agent(payload):
+                # Only people decide; agents' opinions stay opinions.
+                self.triage.post("Refused: only maintainers can %s a ticket, and that request came from an agent." % verb, thread)
+                return
             who = payload.get("sender_name", "a maintainer")
             if verb == "status":
-                self.triage.post(self.status_text(), payload.get("thread_id"))
+                self.triage.post(self.status_text(), thread)
                 return
             if verb == "tally":
-                self.triage.post(self.tally_text(), payload.get("thread_id"))
+                self.triage.post(actions.tally_text(), thread)
                 return
             if not ticket_id:
-                self.triage.post("Which ticket? For example `%s %s R-001`." % (self.mention("agent_name"), verb))
+                self.triage.post("Which ticket? For example `%s %s R-001`." % (self.mention(), verb), thread)
                 return
             try:
                 record = store.load(ticket_id)
             except FileNotFoundError:
-                self.triage.post("There is no ticket %s." % ticket_id)
+                self.triage.post("There is no ticket %s." % ticket_id, thread)
                 return
-            getattr(self, "do_" + verb)(record, who, rest)
+            try:
+                getattr(self, "do_" + verb)(record, who, rest, thread)
+            except states.IllegalTransition as exc:
+                self.triage.post("Refused %s for %s: %s." % (verb, ticket_id, exc), thread)
 
-    def do_release(self, record, who, note):
-        if record["status"] != "quarantined":
-            self.triage.post("%s is not quarantined (it is %s)." % (record["id"], record["status"]))
-            return
-        store.event(record, "released", who, note=note)
-        if not store.poc(record["id"]) or not record.get("claim"):
-            store.set_status(record, "awaiting_poc", who)
-            self.intake.post(self.ask_for_proof(record["id"], reports.Ticket(**{**{k: record.get(k, "") for k in ("title", "reporter", "claim", "severity", "component")}, "missing": record.get("missing", [])})), record.get("intake_thread"))
-            return
-        self.triage.post("%s released by %s." % (record["id"], who))
-        self.accept(record, record.get("intake_thread"))
+    def reporter_thread(self, record):
+        return store.load_private_json(record["id"], "contact.json").get("intake_thread")
 
-    def do_escalate(self, record, who, note):
-        store.set_status(record, "escalated", who, note=note)
-        check = record.get("last_check") or {}
-        evidence = "; ".join(check.get("reasons", [])[:2]) or "see the maintainer's note"
-        self.triage.post("%s escalated by %s. Telling the reporter." % (record["id"], who))
-        if record.get("intake_thread"):
-            self.intake.post(
-                "**%s confirmed by a maintainer.** It reproduced in the sandbox: %s.%s\n\n%s" % (
-                    record["id"], evidence, (" Maintainer's note: " + note) if note else "", self.cost_line(record)),
-                record["intake_thread"])
+    def do_evidence(self, record, who, note, thread):
+        self.triage.post("```\n%s\n```" % evidence.text(evidence.pack(record)), thread)
 
-    def do_close(self, record, who, note):
-        store.set_status(record, "closed", who, note=note)
-        check = record.get("last_check") or {}
-        reasons = check.get("reasons") or []
-        self.triage.post("%s closed by %s. Telling the reporter." % (record["id"], who))
-        if record.get("intake_thread"):
-            text = "**%s closed by a maintainer.**" % record["id"]
-            if note:
-                text += " Reason: " + note
-            if reasons:
-                text += "\n\nWhat the sandbox recorded: " + "; ".join(reasons[:3]) + "."
-            text += "\n\n" + self.cost_line(record)
-            self.intake.post(text, record["intake_thread"])
+    def do_release(self, record, who, note, thread):
+        ticket = ticket_from_record(record)
+        self.route(record, ticket, self.reporter_thread(record), "release", actor="human", by=who)
+        self.triage.post("%s released by %s; it is now %s." % (record["id"], who, store.load(record["id"])["status"].replace("_", " ")), thread)
 
-    @staticmethod
-    def cost_line(record):
-        runs = record.get("runs", [])
-        secs = sum((r.get("seconds") or 0) for r in runs)
-        decisions = sum(1 for e in record.get("timeline", []) if e["what"] in ("status:escalated", "status:closed"))
-        return "_Cost of this decision: %d sandbox runs (%.2f s of sandbox time) and %d maintainer message._" % (len(runs), secs, max(decisions, 1))
+    def do_override(self, record, who, note, thread):
+        record = actions.override(record["id"], "human", who, note)
+        self.triage.post("%s: %s overrode the dispute; the ticket is %s again and can be escalated or closed." % (
+            record["id"], who, record["status"].replace("_", " ")), thread)
+
+    def do_escalate(self, record, who, note, thread):
+        record = actions.decide(record["id"], "escalate", "human", who, note)
+        self.triage.post("%s escalated by %s. Telling the reporter." % (record["id"], who), thread)
+        self.intake.post(messages.decision(record, actions.clean_reason(note)), self.reporter_thread(record))
+
+    def do_close(self, record, who, note, thread):
+        record = actions.decide(record["id"], "close", "human", who, note)
+        self.triage.post("%s closed by %s. Telling the reporter." % (record["id"], who), thread)
+        self.intake.post(messages.decision(record, actions.clean_reason(note)), self.reporter_thread(record))
 
     @staticmethod
     def status_text():
         tickets = store.all_tickets()
         if not tickets:
             return "No tickets yet."
-        return "\n".join("- **%s** %s · %s · `%s`" % (r["id"], r["status"].replace("_", " "), r["claim"] or "?", r["component"]) for r in tickets)
-
-    @staticmethod
-    def tally_text():
-        tickets = store.all_tickets()
-        by = {}
-        for r in tickets:
-            by[r["status"]] = by.get(r["status"], 0) + 1
-        runs = sum(len(r["runs"]) for r in tickets)
-        secs = sum((x.get("seconds") or 0) for r in tickets for x in r["runs"])
-        parts = ", ".join("%d %s" % (n, s.replace("_", " ")) for s, n in sorted(by.items()))
-        return "**Tally:** %d reports (%s). %d sandbox runs, %.2f s of sandbox time." % (len(tickets), parts, runs, secs)
+        return "\n".join("- **%s** %s · %s · `%s`" % (r["id"], r["status"].replace("_", " "), r.get("claim") or "?",
+                                                      r.get("entry_point") or "-") for r in tickets)
 
 
 def cmd_run(args):
+    from . import sandbox
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     state = load_state()
-    if args.auto_check and not sandbox.docker_available():
-        sys.exit("--auto-check needs Docker running")
     if args.auto_check:
+        if not sandbox.docker_available():
+            sys.exit("--auto-check needs Docker running")
         sandbox.build()
     intake = Intake(state, auto_check=args.auto_check)
     intake.start()
@@ -458,7 +417,8 @@ def main(argv=None):
     p.set_defaults(fn=cmd_setup)
     p = sub.add_parser("run", help="connect to the rooms and work")
     p.add_argument("--auto-check", action="store_true",
-                   help="run the sandbox check itself (for setups without the Reproducer agent)")
+                   help="DEVELOPER/TEST ONLY: Intake runs the vulnerable-build check itself (used by scripts/e2e.py "
+                        "when no Reproducer agent is in the room). Not part of the demo flow.")
     p.set_defaults(fn=cmd_run)
     args = parser.parse_args(argv)
     args.fn(args)

@@ -1,50 +1,26 @@
-"""Unit tests for the parts that read untrusted text: parsing and screening."""
+"""The regex screen (a fallback layer; Switch Trust is the primary defence once
+configured, and the evidence-only design is the backstop). These ScreenTests
+are carried over unchanged from the original suite."""
 
-import unittest
 import tempfile
+import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from proveit import intake, reports, screen
-
-REPLAYS = Path(__file__).resolve().parent.parent / "reports" / "replays"
-
-
-def replay(name):
-    return (REPLAYS / name).read_text(encoding="utf-8")
+from tests.helpers import replay
 
 
 class ParseTests(unittest.TestCase):
-    def test_real_report_becomes_complete_ticket(self):
-        t = reports.parse(replay("01-real-cve-2020-14343.md"), "alice")
-        self.assertEqual(t.claim, "code_execution")
-        self.assertEqual(t.component, "yaml.full_load")
-        self.assertEqual(t.severity, "critical")
-        self.assertIn("python/name:eval", t.poc)
-        self.assertTrue(t.complete())
-
-    def test_report_without_poc_is_incomplete(self):
-        t = reports.parse(replay("02-slop-safe-load-rce.md"))
-        self.assertEqual(t.missing, ["poc"])
-        self.assertEqual(t.claim, "code_execution")
-
-    def test_followup_fills_in_poc(self):
-        first = reports.parse(replay("02-slop-safe-load-rce.md"))
-        merged = reports.merge(first, replay("02-slop-safe-load-rce.followup.md"))
-        self.assertTrue(merged.complete())
-        self.assertIn("safe_load", merged.poc)
-
-    def test_dos_claim(self):
-        t = reports.parse(replay("03-slop-billion-laughs.md"))
-        self.assertEqual(t.claim, "denial_of_service")
+    """Carried over from the original suite, adapted to the data-only PoC format."""
 
     def test_ticket_carries_no_prose(self):
         t = reports.parse(replay("04-injection-attempt.md")).to_dict()
-        joined = " ".join(str(v) for k, v in t.items() if k != "poc")
+        joined = " ".join(str(v) for k, v in t.items() if k != "payload")
         self.assertNotIn("ignore your previous", joined.lower())
 
     def test_no_claim_detected(self):
-        t = reports.parse("hello, I found something weird\n```python\nimport yaml\n```")
+        t = reports.parse("hello, I found something weird\nEntry point: yaml.safe_load\n```yaml\na: 1\n```")
         self.assertIn("claim", t.missing)
 
 

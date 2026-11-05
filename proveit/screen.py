@@ -24,7 +24,7 @@ RULES = [
     ("secrets", "asks for secrets or the environment",
      r"\b(print|dump|show|reveal|send|output|list|cat|echo|post|exfiltrate|leak)\b[^\n]{0,40}\b(env(ironment)?( variables)?|secrets?|api[_ ]?keys?|tokens?|credentials?|passwords?|ssh keys?|\.env|id_rsa|printenv)\b"),
     ("host_command", "asks an agent to run something outside the sandbox",
-     r"\b(curl|wget|nc|ncat|bash|sh|powershell|iex)\b[^\n]{0,60}(https?://|\|\s*(ba)?sh|\d{1,3}(\.\d{1,3}){3})"),
+     r"\b(curl|wget|nc|ncat|bash|sh|powershell|iex)\s+(-{1,2}[\w-]+\s+)*['\"]?(https?://|\d{1,3}(\.\d{1,3}){3})|\|\s*(ba)?sh\b"),
     ("agent_address", "addresses the AI reviewers directly",
      r"\b(dear|attention|note (to|for)|hey|instructions? for)\b[^\n]{0,25}\b(ai|llm|assistant|agent|claude|codex|gpt|copilot|triager|reviewer bot)s?\b"),
     ("verdict_forcing", "tells the reviewers what verdict to reach",

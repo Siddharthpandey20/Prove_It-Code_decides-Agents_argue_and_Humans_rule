@@ -1,9 +1,15 @@
 """End-to-end test of Prove It over a real Switch server and Mattermost.
 
-Registers the Intake agent, creates and links the rooms, starts Intake (with
---auto-check, standing in for the Reproducer), replays all four reports as a
-real Mattermost user, has a "maintainer" close and escalate, and checks every
-ticket ends where it should and every reporter thread got its answer.
+Registers the Intake agent, creates and links the rooms (Intake finds the
+triage room through that link), starts Intake with --auto-check (a
+developer/test flag: Intake runs the vulnerable-build check itself because no
+Reproducer agent is in these rooms), replays all four reports as a real
+Mattermost user, has a "maintainer" close and escalate, and checks every
+ticket ends where it should, every reporter thread got its answer, and
+escalating the quarantined report is refused.
+
+It proves the Switch plumbing (agent protocol, rooms, link, threads, the
+state machine over real messages). It does not exercise the LLM agents.
 
   scripts/switch-server.sh up
   python scripts/e2e.py --env-file .proveit/switch-server/.env
@@ -83,6 +89,7 @@ def main():
         mm.post(triage_ch, "@%s close %s the PoC wrote the marker itself" % (agent, ids["02"]))
         mm.post(triage_ch, "@%s close %s finished in milliseconds with 12 MB" % (agent, ids["03"]))
         mm.post(triage_ch, "@%s escalate %s confirmed, CVE-2020-14343" % (agent, ids["01"]))
+        mm.post(triage_ch, "@%s escalate %s" % (agent, ids["04"]))  # must be refused: quarantined
         time.sleep(6)
 
         expected = {"01": "escalated", "02": "closed", "03": "closed", "04": "quarantined"}
@@ -91,7 +98,7 @@ def main():
             record = store.load(ids[n])
             ok = record["status"] == status
             print("%s %s: %s (expected %s)%s" % ("PASS" if ok else "FAIL", ids[n], record["status"], status,
-                                                ", check: %s" % record.get("last_check", {}).get("vulnerable") if record.get("last_check") else ""))
+                                                ", sandbox: %s" % record["runs"][-1]["outcome"] if record.get("runs") else ""))
             if not ok:
                 failures.append(n)
             thread = mm.call("GET", "/posts/%s/thread" % roots[n])
@@ -103,6 +110,12 @@ def main():
                 print("FAIL reporter thread %s has no %r" % (n, needle))
             else:
                 print("PASS reporter thread %s got %r" % (n, needle))
+        triage_posts = [p["message"] for p in mm.call("GET", "/channels/%s/posts?per_page=200" % triage_ch)["posts"].values()]
+        if any("Refused escalate for %s" % ids["04"] in m and "never be escalated" in m for m in triage_posts):
+            print("PASS %s: escalate refused while quarantined" % ids["04"])
+        else:
+            failures.append("04-refusal")
+            print("FAIL %s: no refusal for escalating a quarantined report" % ids["04"])
         if failures:
             print("\nintake log:\n" + (tmp / "intake.log").read_text()[-3000:])
             sys.exit("E2E FAILED: %s" % failures)

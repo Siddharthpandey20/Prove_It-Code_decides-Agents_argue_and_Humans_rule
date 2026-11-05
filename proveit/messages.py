@@ -5,7 +5,9 @@ in the sandbox" is written only when the vulnerable-build outcome reproduced.
 Triage-facing text contains only fixed fields.
 """
 
-from . import judge, poc
+from pathlib import Path
+
+from . import judge, poc, store
 from .config import POC_FORMAT_HELP, PROOF_CONTRACT, TARGET
 from .evidence import latest_run
 
@@ -107,11 +109,18 @@ def ticket_posted(record):
                 record["id"], record["id"], record["id"], record["id"], record["id"]))
 
 
+def host_path(path):
+    """A path for maintainers to open on the host, with the home folder shortened to ~."""
+    text, home = str(path), str(Path.home())
+    return "~" + text[len(home):] if text.startswith(home) else text
+
+
 def quarantine_notice(record, mention):
     return ("**%s quarantined** at intake. Screen rules hit: `%s`. The reporter's text was not passed to any "
-            "agent; maintainers can read `work/%s/private/report.md` on the host. Reply `%s release %s` to "
+            "agent; maintainers can read `%s` on the host. Reply `%s release %s` to "
             "send it on, or `%s close %s <reason>`." % (
-                record["id"], ", ".join(record.get("screen_rules") or []), record["id"], mention, record["id"],
+                record["id"], ", ".join(record.get("screen_rules") or []),
+                host_path(store.private_path(record["id"], "report.md")), mention, record["id"],
                 mention, record["id"]))
 
 

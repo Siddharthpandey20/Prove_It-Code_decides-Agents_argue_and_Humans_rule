@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 from . import poc
-from .config import REPO_ROOT, SANDBOX_LIMITS, TARGET, TARGET_DIR
+from .config import PROVEIT_HOME, SANDBOX_LIMITS, TARGET, TARGET_DIR
 
 HARNESS_FILES = ("Dockerfile", "harness.py", "child.py")
 
@@ -80,12 +80,14 @@ def docker_flags(name, poc_dir):
 
 
 def _mount_root():
-    """Where the read-only /poc mount is staged: inside the checkout, not the system temp folder.
+    """Where the read-only /poc mount is staged: under ~/.proveit/<checkout>/mounts, not the system temp folder.
 
     Docker Desktop and Colima on macOS share the home folder with their VM but
     not macOS's /var/folders temp directory, so a mount from there arrives empty.
+    The staged payload is reporter material, so it lives with the rest of it,
+    where neither agent may read.
     """
-    root = REPO_ROOT / ".proveit"
+    root = PROVEIT_HOME / "mounts"
     root.mkdir(parents=True, exist_ok=True)
     return root
 

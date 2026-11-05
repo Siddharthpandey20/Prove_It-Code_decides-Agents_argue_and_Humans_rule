@@ -6,15 +6,58 @@ never to people developing Prove It.
 
 | Folder | Agent | Config | What it enforces |
 | --- | --- | --- | --- |
-| `reproducer/` | Reproducer (Claude Code) | `.claude/settings.json` | `defaultMode: dontAsk` (anything not allowed is denied, no prompt), `disableBypassPermissionsMode: disable`, allow only `python -m proveit check / evidence / show / list / tally / concur / dispute`, deny network tools, shells, `docker`, `rm`, `git`, `python -c`, the Edit/Write tools, web tools and reads of `work/*/private/`. `PROVEIT_ACTOR=agent` makes the CLI refuse `override` and `cost`. |
-| `skeptic/` | Skeptic (Codex) | `.codex/config.toml`, `.codex/rules/proveit.rules` | `workspace-write` sandbox with no network, writes only to `../../work`. `forbidden` rules (for `python` and `python3`) for `proveit check / override / cost / submit / build`, `-c` / `-` / other `-m` modules, every general file reader (`cat`, `head`, `grep`, `sed`, `jq`, ...), nested shells, network tools, `docker`, and file changes. Codex's sandbox does not limit reads, and rules match a command's leading words rather than paths, so file readers are forbidden outright: the Skeptic reads tickets only through `python -m proveit`. Same `PROVEIT_ACTOR=agent`. `tests/test_agent_rules.py` checks the rules with `codex execpolicy` when Codex is installed. |
+| `reproducer/` | Reproducer (Claude Code) | `.claude/settings.json` | `defaultMode: dontAsk` (anything not allowed is denied, no prompt), `disableBypassPermissionsMode: disable`. Allows only `python -m proveit check / evidence / show / list / tally / export`. Denies `concur` / `dispute` (it may not judge its own evidence), `override` / `cost`, every other way of running Python (`-c`, `-I`, `python3.x`, ...), file readers, shells, network tools, `docker`, `git`, the Edit/Write tools, web tools, and reads of `~/.proveit/**`. Sets `PROVEIT_ACTOR=agent`, `PROVEIT_AGENT=reproducer`. |
+| `skeptic/` | Skeptic (Codex) | `.codex/config.toml`, `.codex/rules/proveit.rules` | A Codex **permission profile**: the OS sandbox may read the disk except `~/.proveit` (`"none"`), may write only its temp folder, and has no network. `sandbox_mode = "read-only"` is the fallback. The rules forbid, before the sandbox is even reached, `proveit check / concur / dispute / override / cost / submit / build`, every other way of running Python, file readers (`cat`, `Get-Content`, `dd`, `xargs`, ...), shells, network tools, `docker` and file changes. Sets `PROVEIT_ACTOR=agent`, `PROVEIT_AGENT=skeptic`. |
+
+## Where the secrets are
+
+Everything an agent must never read lives in `~/.proveit/<checkout>-<hash>/`
+(see `proveit/config.py`), not in the checkout:
+
+- `private/R-001/`: the reporter's text, payload, screen result and thread.
+- `intake.json`: Intake's Switch credentials and the maintainer list.
+- `reporter.json`: the Mattermost login `scripts/replay.py` uses (optional).
+- `mounts/`: the sandbox's short-lived staging copies of payloads.
+
+Because the path starts at the home folder, both lockdowns can name it
+without knowing where you cloned the repository. Older versions kept these in
+`work/<id>/private/` and `.proveit/`; they are moved on first use.
+
+## Who records what
+
+| Action | Who | How |
+| --- | --- | --- |
+| Run a payload (`check`) | Reproducer | its shell, `python -m proveit check R-001` |
+| Concur / dispute | Skeptic | a message in `#proveit-triage`: `@prove-it-intake concur R-001` or `@prove-it-intake dispute R-001 <reason>`. Switch tells Intake who sent it; Intake records it only from `prove-it-skeptic` (or a maintainer). The Skeptic's shell is read-only. |
+| Escalate, close, override, release | Maintainers listed in Intake's settings | `@prove-it-intake escalate R-001`, ... (`python -m proveit.intake maintainers add <name>`) |
+
+`PROVEIT_AGENT` gives each agent its role in the CLI, and an agent's `--by` is
+replaced by that role. It is an honest-mistake guard, not a boundary: the
+boundaries are the Skeptic's sandbox profile, the Reproducer's allow list,
+Switch's sender identity in the room, and the payload sandbox.
+
+## Things to check in Switch Console
+
+- **Bypass permissions must stay off** for both agents. The template sets
+  `auto_approve: false`.
+- **Console starts agents in its `auto` mode.** On Switch Console (2026-11-05)
+  the Reproducer runs as `claude --permission-mode auto` even with
+  `auto_approve: false`. A command-line mode can take the place of
+  `defaultMode: dontAsk`, so a command that is neither allowed nor denied may
+  go to Claude's own automatic check instead of being refused. The deny list
+  above is written for that case: it names the ways around the allow list
+  instead of relying on "everything else is denied". Check it on your machine
+  (`python -m proveit doctor` shows the mode it sees), and see
+  [docs/evidence/](../docs/evidence/) for the live result.
+- **Trust each folder once** so project settings apply: run `claude` in
+  `agents/reproducer` and accept the trust prompt; run `codex` in
+  `agents/skeptic` and trust the project. Claude Code's deny rules apply even
+  before trust; its allow rules and `env` wait for it. Codex ignores
+  `.codex/` until the project is trusted.
 
 `PYTHONPATH=../..` lets `python -m proveit` run from these folders; tickets
 still live in the checkout's `work/`.
 
-Both tools apply project allow rules and environment settings only after you
-trust the folder (Claude Code: workspace trust; Codex: project trust). Deny
-rules in Claude Code apply right away. Bash permission rules match the
-command the agent writes, not every way a program can be started, so they
-are a guard rail on top of the real boundary: the payload only ever runs in
-the no-network sandbox, and agents only ever see fixed fields.
+`tests/test_agent_rules.py` checks the Claude settings as data, and the Codex
+rules and sandbox profile with Codex itself (`codex execpolicy` and `codex
+sandbox`) when Codex is installed.

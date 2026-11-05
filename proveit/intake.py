@@ -29,14 +29,17 @@ import threading
 from pathlib import Path
 
 from . import actions, evidence, messages, reports, screen, states, store
-from .config import REPO_ROOT
+from .config import LEGACY_STATE_DIR, PROVEIT_HOME
 from .switch_client import Agent, SwitchError, open_to_everyone, register_agent
 
 log = logging.getLogger("proveit.intake")
-STATE_FILE = Path(os.environ.get("PROVEIT_STATE", REPO_ROOT / ".proveit" / "intake.json"))
+STATE_FILE = Path(os.environ.get("PROVEIT_STATE") or PROVEIT_HOME / "intake.json")
+LEGACY_STATE_FILE = LEGACY_STATE_DIR / "intake.json"
 TRIAGE_LINK_LABEL = "triage"
 # Decisions only the maintainers listed in the state file may make.
 HUMAN_ONLY = ("escalate", "close", "release", "override")
+# Verdicts only the Skeptic agent (or a maintainer) may record.
+VERDICTS = ("concur", "dispute")
 
 DEFAULTS = {
     "agent_name": "prove-it-intake",
@@ -77,16 +80,28 @@ def split_names(text):
     return [n.strip().lstrip("@") for n in (text or "").split(",") if n.strip().lstrip("@")]
 
 
+def move_legacy_state():
+    """Older versions kept Intake's credentials in the checkout's .proveit/; move them out of the agents' reach."""
+    if not os.environ.get("PROVEIT_STATE") and not STATE_FILE.exists() and LEGACY_STATE_FILE.exists():
+        STATE_FILE.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        LEGACY_STATE_FILE.replace(STATE_FILE)
+        log.info("moved %s to %s", LEGACY_STATE_FILE, STATE_FILE)
+
+
 def load_state():
+    move_legacy_state()
     if not STATE_FILE.exists():
         sys.exit("No agent registered yet. Run: python -m proveit.intake setup")
     return json.loads(STATE_FILE.read_text(encoding="utf-8"))
 
 
 def save_state(state):
-    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    (STATE_FILE.parent / ".gitignore").write_text("*\n")
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     STATE_FILE.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    try:
+        os.chmod(STATE_FILE, 0o600)
+    except OSError:
+        pass
 
 
 def cmd_setup(args):
@@ -128,7 +143,7 @@ def cmd_setup(args):
             state[key] = getattr(args, key)
     state["maintainers"] = split_names(args.maintainers)
     save_state(state)
-    print("Saved credentials to %s (git-ignored)" % STATE_FILE)
+    print("Saved credentials to %s (outside the checkout, never committed)" % STATE_FILE)
     if state["maintainers"]:
         print("Maintainers who may decide: %s" % ", ".join(state["maintainers"]))
     else:
@@ -186,7 +201,9 @@ def target_for(ticket):
 
 
 class Intake:
-    COMMAND = re.compile(r"\b(escalate|close|release|override|evidence|status|tally)\b\s*(R-\d{3,})?\s*(.*)", re.I | re.S)
+    VERBS = "escalate|close|release|override|concur|dispute|evidence|status|tally"
+    # A command is the text right after the @mention: "@prove-it-intake dispute R-001 patched build not checked".
+    COMMAND = re.compile(r"[\s:,]*(%s)\b\s*(R-\d{3,})?\s*(.*)" % VERBS, re.I | re.S)
 
     def __init__(self, state, auto_check=False, source="switch"):
         self.state = state
@@ -195,6 +212,8 @@ class Intake:
         self.source = source
         self.names = {state["agent_name"]}
         self.maintainers = {n.lower() for n in state.get("maintainers") or []}
+        skeptic = state.get("skeptic", DEFAULTS["skeptic"])
+        self.skeptic_names = {n.lower() for n in [skeptic, "Prove It Skeptic"] + list(state.get("skeptic_names") or [])}
         self.lock = threading.RLock()
         self.intake = None   # anything with .post(body, thread_id=None)
         self.triage = None
@@ -332,17 +351,37 @@ class Intake:
             return
         self.handle_command(payload)
 
+    def parse_command(self, body):
+        """The command after any line's @mention of Intake, or None."""
+        for name in sorted(self.names, key=len, reverse=True):
+            for part in re.split(r"@%s\b" % re.escape(name), body, flags=re.I)[1:]:
+                match = self.COMMAND.match(part)
+                if match:
+                    return match
+        return None
+
+    def is_skeptic(self, payload):
+        return self.is_agent(payload) and payload.get("sender_name", "").lstrip("@").lower() in self.skeptic_names
+
     def handle_command(self, payload):
         body, thread = payload.get("body", ""), payload.get("thread_id")
-        match = self.COMMAND.search(body)
+        match = self.parse_command(body)
+        log.info("triage command from %r (kind %s): %s", payload.get("sender_name"), payload.get("sender_kind"),
+                 match.group(1).lower() if match else "none")
         with self.lock:
             if not match:
                 self.triage.post("Commands: `escalate R-001 [note]`, `close R-001 <reason>`, `override R-001 [note]`, "
-                                 "`release R-001`, `evidence R-001`, `status`, `tally`.", thread)
+                                 "`release R-001`, `evidence R-001`, `status`, `tally`; "
+                                 "from the Skeptic: `concur R-001`, `dispute R-001 <reason>`.", thread)
                 return
             verb, ticket_id, rest = match.group(1).lower(), match.group(2), match.group(3).strip()
             human_only = verb in HUMAN_ONLY
             who = payload.get("sender_name", "")
+            if verb in VERDICTS and not (self.is_skeptic(payload) or (not self.is_agent(payload) and self.is_maintainer(who))):
+                # Switch tells Intake who sent a message, so only the real Skeptic (or a maintainer) records a verdict.
+                self.triage.post("Refused: only @%s or a maintainer records a verdict (%s), and @%s is neither."
+                                 % (self.state.get("skeptic", "prove-it-skeptic"), verb, who or "?"), thread)
+                return
             if human_only and self.is_agent(payload):
                 # Only people decide; agents' opinions stay opinions.
                 self.triage.post("Refused: only maintainers can %s a ticket, and that request came from an agent." % verb, thread)
@@ -372,12 +411,26 @@ class Intake:
                 self.triage.post("There is no ticket %s." % ticket_id, thread)
                 return
             try:
-                getattr(self, "do_" + verb)(record, who, rest, thread)
+                if verb in VERDICTS:
+                    getattr(self, "do_" + verb)(record, who, rest, thread,
+                                                actor="agent" if self.is_agent(payload) else "human")
+                else:
+                    getattr(self, "do_" + verb)(record, who, rest, thread)
             except states.IllegalTransition as exc:
                 self.triage.post("Refused %s for %s: %s." % (verb, ticket_id, exc), thread)
 
     def reporter_thread(self, record):
         return store.load_private_json(record["id"], "contact.json").get("intake_thread")
+
+    def do_concur(self, record, who, note, thread, actor="agent"):
+        record = actions.concur(record["id"], actor, who)
+        self.triage.post("%s: %s concurs with the evidence; status %s." % (
+            record["id"], who, record["status"].replace("_", " ")), thread)
+
+    def do_dispute(self, record, who, note, thread, actor="agent"):
+        record = actions.dispute(record["id"], note, actor, who)
+        self.triage.post("%s: disputed by %s (%s). Escalation is blocked until a maintainer overrides." % (
+            record["id"], who, record["skeptic"]["reason"]), thread)
 
     def do_evidence(self, record, who, note, thread):
         self.triage.post("```\n%s\n```" % evidence.text(evidence.pack(record)), thread)

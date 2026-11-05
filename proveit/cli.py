@@ -13,8 +13,13 @@
   tally                          totals for the demo's closing slide
   submit FILE                    create a ticket from a report file, without Switch
 
-Agents run these with PROVEIT_ACTOR=agent (set in .claude/settings.json and
-.codex/config.toml); override and cost then refuse.
+Agents run these with PROVEIT_ACTOR=agent and PROVEIT_AGENT=reproducer or
+skeptic, both set by the agent's own config (agents/reproducer/.claude/settings.json,
+agents/skeptic/.codex/config.toml). The Reproducer may run check and the
+read-only commands; the Skeptic only the read-only ones, and it records concur /
+dispute by posting them to Intake in #proveit-triage, where Switch vouches for
+the sender. An agent's --by is replaced by its role. override and cost are for
+humans only.
 """
 
 import argparse
@@ -26,8 +31,43 @@ from . import actions, evidence, judge, reports, sandbox, screen, states, store
 from .config import ENTRY_POINTS, TARGET
 
 
+READ_ONLY = {"evidence", "show", "list", "tally", "export"}
+# What each agent role may run. The Reproducer produces evidence; the Skeptic judges it.
+ROLE_COMMANDS = {
+    "reproducer": READ_ONLY | {"check"},
+    # The Skeptic only reads. It records concur / dispute by posting them to Intake in the
+    # triage room, where Switch vouches for the sender, so no shell can speak for it.
+    "skeptic": set(READ_ONLY),
+}
+
+
 def actor():
     return "agent" if os.environ.get("PROVEIT_ACTOR", "").strip().lower() == "agent" else "human"
+
+
+def agent_role():
+    """The agent's role from its config, or None. Only meaningful when actor() is 'agent'."""
+    role = os.environ.get("PROVEIT_AGENT", "").strip().lower()
+    return role if role in ROLE_COMMANDS else None
+
+
+def refuse_for_role(cmd):
+    """Why an agent may not run `cmd`, or None. Humans are never refused here."""
+    if actor() != "agent":
+        return None
+    if cmd in ("override", "cost"):
+        return "only humans may %s; this shell runs as an agent (PROVEIT_ACTOR=agent)" % cmd
+    role = agent_role()
+    allowed = ROLE_COMMANDS.get(role, READ_ONLY)
+    if cmd in allowed:
+        return None
+    if cmd in ("concur", "dispute"):
+        return ("agents record verdicts in #proveit-triage, not here: post `@prove-it-intake %s R-001%s` "
+                "(Intake accepts it only from the Skeptic)" % (cmd, " <reason>" if cmd == "dispute" else ""))
+    if role is None:
+        return ("this agent has no role (PROVEIT_AGENT is not reproducer or skeptic), so it may only read: %s"
+                % ", ".join(sorted(READ_ONLY)))
+    return "the %s may not run %s; it may run: %s" % (role, cmd, ", ".join(sorted(allowed)))
 
 
 def _print(obj):
@@ -138,8 +178,11 @@ def main(argv=None):
     p = sub.add_parser("tally"); p.add_argument("--json", action="store_true"); p.set_defaults(fn=cmd_tally)
     p = sub.add_parser("submit"); p.add_argument("file"); p.set_defaults(fn=cmd_submit)
     args = parser.parse_args(argv)
-    if args.cmd in ("override", "cost") and actor() != "human":
-        sys.exit("refused: only humans may %s; this shell runs as an agent (PROVEIT_ACTOR=agent)" % args.cmd)
+    refusal = refuse_for_role(args.cmd)
+    if refusal:
+        sys.exit("refused: " + refusal)
+    if actor() == "agent" and hasattr(args, "by"):
+        args.by = agent_role()  # an agent's name comes from its config, never from its own flag
     try:
         args.fn(args)
     except states.IllegalTransition as exc:

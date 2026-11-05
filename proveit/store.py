@@ -1,19 +1,24 @@
 """Tickets on disk, shared by the Intake agent and the agents in #triage.
 
-work/
+work/                      what agents may read (nothing in it is reporter text)
   R-001/
-    ticket.json         fixed fields, status, timeline: what agents may read
-    runs/               one sanitized sandbox record per run: what agents may read
-    private/            reporter-controlled material; only Intake, the sandbox and
-      report.md         maintainers on the host read it. Agents are denied it
-      payload.yaml      (.claude/settings.json) and never told about it.
-      screen.json
-      contact.json
+    ticket.json            fixed fields, status, timeline
+    runs/                  one sanitized sandbox record per run
+~/.proveit/<checkout>/private/
+  R-001/                   reporter-controlled material, outside the checkout.
+    report.md              Only Intake, the sandbox and maintainers on the host read it;
+    payload.yaml           the Skeptic's sandbox profile and the Reproducer's settings
+    screen.json            both deny ~/.proveit.
+    contact.json
+
+With PROVEIT_WORK_DIR (tests, the rehearsal, e2e) the private folder sits next
+to the work folder instead, unless PROVEIT_PRIVATE_DIR says otherwise.
 """
 
 import json
 import os
 import re
+import shutil
 import time
 from pathlib import Path
 
@@ -49,13 +54,35 @@ def next_id():
     return "R-%03d" % (max(numbers, default=0) + 1)
 
 
+def private_root():
+    """Where reporter material lives: ~/.proveit/<checkout>/private for the real ticket store,
+    or next to a work folder moved with PROVEIT_WORK_DIR (tests, the rehearsal, e2e)."""
+    explicit = os.environ.get("PROVEIT_PRIVATE_DIR")
+    if explicit:
+        return Path(explicit)
+    if work_dir().resolve() == config.DEFAULT_WORK_DIR.resolve():
+        return config.PROVEIT_HOME / "private"
+    return work_dir().parent / ".proveit-private"
+
+
+def private_dir(ticket_id):
+    """The ticket's private folder, moving one left by an older version out of work/ first."""
+    folder = private_root() / _dir(ticket_id).name
+    legacy = _dir(ticket_id) / "private"
+    if legacy.is_dir() and not folder.exists():
+        folder.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(legacy), str(folder))
+    return folder
+
+
 def create(fields, raw_text, source):
-    """fields: only fixed values (claim, severity, entry_point, ...). raw_text goes to private/."""
+    """fields: only fixed values (claim, severity, entry_point, ...). raw_text goes to the private folder."""
     ticket_id = next_id()
     folder = _dir(ticket_id)
     (folder / "runs").mkdir(parents=True)
-    (folder / "private").mkdir()
-    _write(folder / "private" / "report.md", raw_text)
+    private = private_dir(ticket_id)
+    private.mkdir(parents=True, mode=0o700)
+    _write(private / "report.md", raw_text)
     record = dict(fields, id=ticket_id, status="new", source=source, created_at=now(),
                   times={"received": time.time()}, timeline=[], runs=[])
     save(record)
@@ -71,7 +98,7 @@ def save(record):
 
 
 def private_path(ticket_id, name):
-    return _dir(ticket_id) / "private" / name
+    return private_dir(ticket_id) / name
 
 
 def set_payload(ticket_id, payload):

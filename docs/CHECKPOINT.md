@@ -19,13 +19,17 @@ Finding numbers (F1 to F31) refer to the assessment.
 
 ## B. Agent roles and lockdowns (F2, F3, F4)
 
-- [ ] B1 Each agent's identity comes from its own config (`PROVEIT_AGENT=reproducer|skeptic`), not from `--by`. Agents' `--by` is ignored.
-- [ ] B2 The CLI enforces roles: the Reproducer may `check`, never `concur`/`dispute`; the Skeptic may `concur`/`dispute`, never `check`.
-- [ ] B3 Reproducer's Claude allow list no longer contains `concur`/`dispute`; deny list covers other Python forms (`python -I -c`, `python3.x`, ...).
-- [ ] B4 Skeptic's Codex config is an allowlist: `approval_policy = "untrusted"` so anything unlisted needs a human's approval, `allow` rules for exactly its proveit commands, `forbidden` rules for the bypasses found (`python -I -c`, `python3.9 -c`, `Get-Content`, `type`, `dd`, `xargs`, `paste`, `tee`, `powershell`, `pwsh`, `cmd`, `osascript`, ...).
-- [ ] B5 Reporter material moves out of the agents' writable ticket store: `private/` lives under `.proveit/private/<id>/` (git-ignored, denied to both agents), so the Skeptic's write access to `work/` cannot touch it.
-- [ ] B6 `tests/test_agent_rules.py` covers every bypass from the assessment, and the Claude settings are checked for the role rules.
-- [ ] B7 Console's `--permission-mode auto` is documented with what it means and how to check it (live result recorded in J).
+- [x] B1 Each agent's identity comes from its own config (`PROVEIT_AGENT=reproducer|skeptic`), not from `--by`. Agents' `--by` is replaced by their role.
+- [x] B2 The CLI enforces roles: the Reproducer may `check` and read; the Skeptic may only read. No agent can `concur`/`dispute` from a shell.
+  *Changed from the plan:* the Skeptic records `concur` / `dispute` by posting `@prove-it-intake concur R-001` in triage. Switch tells Intake who sent a message, so Intake records a verdict only from the real `prove-it-skeptic` agent (or a listed maintainer). This is stronger than an environment variable, and it lets the Skeptic's sandbox be read-only (decision D-009).
+- [x] B3 Reproducer's Claude allow list no longer contains `concur`/`dispute` (they are denied); the deny list covers other Python forms (`python -I*`, `python3.*`, `py`, absolute paths), file readers and `~/.proveit/**`.
+- [x] B4 Skeptic's Codex lockdown no longer relies on listing commands.
+  *Changed from the plan:* `approval_policy = "untrusted"` was tried and Codex 0.166 refuses to load it ("no longer supported"), which would have disabled the Skeptic's config. Instead a Codex **permission profile** (`default_permissions`) makes the OS sandbox deny every read of `~/.proveit`, every write outside the temp folder, and the network. The rules forbid every bypass found (`python -I -c`, `python3.9 -c`, `Get-Content`, `type`, `dd`, `xargs`, `paste`, `tee`, `powershell`, `pwsh`, `cmd`, `osascript`, ...).
+- [x] B5 Reporter material, Intake's credentials and the sandbox's staging mounts move to `~/.proveit/<checkout>-<hash>/` (outside the checkout, so both configs can deny it by a fixed path). Old `work/<id>/private/` and `.proveit/intake.json` are moved on first use.
+- [x] B6 `tests/test_agent_rules.py` covers every bypass from the assessment with `codex execpolicy`, checks the profile with `codex sandbox` from `agents/skeptic` (read of `~/.proveit` refused, write refused, proveit commands still run), and checks the Claude settings as data.
+- [x] B7 Console's `--permission-mode auto` is documented in `agents/README.md` (live result recorded in J5).
+
+  Evidence: 99 tests OK, rehearsal twice identical, template accepted by Switch's `/templates/validate`. `codex sandbox` from `agents/skeptic` with the project config: `cat ~/.proveit/...` -> "Operation not permitted"; `echo x > ../../work/zz` -> "Operation not permitted"; `python3 -m proveit list` runs.
 
 ## C. Evidence says only what it shows (F5, F6, F7, F8, F27, F28, F29)
 

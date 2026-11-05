@@ -5,19 +5,27 @@
 # (https://learn.chatgpt.com/docs/config-file/config-reference,
 #  https://learn.chatgpt.com/docs/agent-configuration/rules).
 #
-# The Skeptic only reads evidence and records concur/dispute, so it needs no
-# network and writes only to the ticket store (../../work).
+# The Skeptic only reads: `python -m proveit evidence|show|list|tally`. It
+# records concur / dispute by posting `@prove-it-intake concur R-001` in
+# #proveit-triage, where Switch vouches for the sender, so it never needs to
+# write a file.
+#
+# Reporter material, Intake's credentials and the sandbox's staging mounts
+# live in ~/.proveit/<checkout>/ (see proveit/config.py). The permission
+# profile below makes the OS sandbox refuse every read there, whatever command
+# the Skeptic runs, and refuses all writes except the temp folder.
+# Checked with Codex 0.166:
+#   codex sandbox -c 'default_permissions="proveit_skeptic"' -- cat ~/.proveit/...  ->  Operation not permitted
 
-sandbox_mode = "workspace-write"
+# Fallback if a Codex version ignores permission profiles: no writes anywhere.
+sandbox_mode = "read-only"
+default_permissions = "proveit_skeptic"
 
-[sandbox_workspace_write]
-network_access = false
-# Codex's docs do not say what a relative writable root resolves against.
-# If `python -m proveit concur` fails with a write error, replace this with
-# the absolute path of <checkout>/work (see README, "Needs a human").
-writable_roots = ["../../work"]
+[permissions.proveit_skeptic]
+filesystem = { ":root" = "read", ":tmpdir" = "write", "~/.proveit" = "none" }
+network = { enabled = false }
 
 [shell_environment_policy]
-# PYTHONPATH lets `python -m proveit` run from this folder; PROVEIT_ACTOR
-# makes the CLI refuse human-only commands (override, cost).
-set = { PROVEIT_ACTOR = "agent", PYTHONPATH = "../.." }
+# PYTHONPATH lets `python -m proveit` run from this folder; PROVEIT_ACTOR and
+# PROVEIT_AGENT make the CLI allow only the Skeptic's read-only commands.
+set = { PROVEIT_ACTOR = "agent", PROVEIT_AGENT = "skeptic", PYTHONPATH = "../..", PYTHONDONTWRITEBYTECODE = "1" }

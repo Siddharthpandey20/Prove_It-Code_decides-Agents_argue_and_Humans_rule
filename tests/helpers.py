@@ -4,6 +4,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from proveit import config, intake
 
@@ -72,3 +73,13 @@ def fake_run(outcome, build="vulnerable", entry="full_load", **extra):
            "exception_type": None, "exception_frames": []}
     run.update(extra)
     return run
+
+
+def stub_runs(*outcomes):
+    """Patch the sandbox so successive runs return these outcomes (or run records, for full control)."""
+    runs = iter(outcomes)
+
+    def run_poc(entry, payload, build):
+        nxt = next(runs)
+        return dict(nxt) if isinstance(nxt, dict) else fake_run(nxt, build=build, entry=entry)
+    return mock.patch("proveit.actions.sandbox.run_poc", side_effect=run_poc)

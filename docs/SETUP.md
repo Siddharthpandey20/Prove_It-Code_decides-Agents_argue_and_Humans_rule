@@ -8,7 +8,7 @@ About 15 minutes the first time. You need Docker, Python 3.9+, Switch Console, a
 git clone https://github.com/akhilll0305/team-pikachu-switch-ai
 cd team-pikachu-switch-ai
 python -m proveit build
-python -m unittest discover -s tests       # 60 tests, about a minute, Docker running
+python -m unittest discover -s tests       # 73 tests, about a minute, Docker running
 python scripts/rehearse.py                 # the whole demo offline, no Switch
 ```
 

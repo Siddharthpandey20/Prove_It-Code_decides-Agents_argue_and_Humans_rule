@@ -40,6 +40,17 @@ class Forwarding(WorkDirTest):
         self.assertEqual(store.load(record["id"])["status"], "in_triage")
         self.assertIn("**Ticket R-001**", agent.triage.text())
 
+    def test_entry_point_only_followup_keeps_the_payload(self):
+        agent = self.make_intake()
+        root = self.report(agent, "Claimed impact: arbitrary code execution\n\n```yaml\na: 1\n```\n")
+        record = store.all_tickets()[0]
+        self.assertEqual((record["status"], record["missing"]), ("awaiting_poc", ["entry_point"]))
+        self.reply(agent, root, "Entry point: yaml.safe_load")
+        record = store.load(record["id"])
+        self.assertEqual((record["status"], record["entry_point"], record["missing"]), ("in_triage", "safe_load", []))
+        self.assertEqual(store.payload(record["id"]), "a: 1\n")
+        self.assertIn("**Ticket R-001**", agent.triage.text())
+
     def test_injection_fixture_is_quarantined(self):
         agent = self.make_intake()
         self.report(agent, replay("04-injection-attempt.md"))

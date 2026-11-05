@@ -114,11 +114,11 @@ The sandbox image is `python:3.9-slim`, pinned by digest. Python 3.9 is end of l
 ```sh
 git clone https://github.com/akhilll0305/team-pikachu-switch-ai && cd team-pikachu-switch-ai
 python -m proveit build                      # builds proveit-target:vulnerable and :patched (needs network once)
-python -m unittest discover -s tests -v      # 60 tests, about a minute; Docker must be running
+python -m unittest discover -s tests -v      # 73 tests, about a minute; Docker must be running
 python scripts/rehearse.py --twice           # replays all four reports twice and compares
 ```
 
-Expected: the tests end with `Ran 60 tests ... OK`. If Docker is not running, the 17 sandbox tests are skipped and the output says `skipped`; that is not a pass. The rehearsal ends with:
+Expected: the tests end with `Ran 73 tests ... OK`. If Docker is not running, the 19 sandbox tests are skipped and the output says `skipped`; that is not a pass. The 3 tests in `tests/test_agent_rules.py` check the Skeptic's Codex rules and skip only when the Codex CLI is not installed (as on CI); that skip is expected. The rehearsal ends with:
 
 ```
 **Tally:** 4 reports. By status: 2 closed, 1 escalated, 1 quarantined. By outcome: 1 CODE_EXECUTION, 2 NOT_REPRODUCED, 1 not run. ...

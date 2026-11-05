@@ -41,6 +41,8 @@ ENTRY_POINTS = ("safe_load", "full_load", "load:SafeLoader", "load:FullLoader")
 PAYLOAD_MAX_BYTES = 64 * 1024
 CALL_SECONDS = 10
 CALL_MEMORY_MB = 192
+# Peak memory the parent must observe before a reported MemoryError counts.
+MEMORY_EXHAUSTION_MB = CALL_MEMORY_MB // 2
 EVENT_KINDS = {"exec", "compile", "write-marker", "write-other", "os.system", "os.exec",
                "os.posix_spawn", "os.spawn", "subprocess.Popen", "socket.connect", "ctypes.dlopen"}
 CRASH_SIGNALS = {signal.SIGSEGV, signal.SIGBUS, signal.SIGABRT, signal.SIGFPE, signal.SIGILL}
@@ -186,8 +188,12 @@ def classify(observed, clean):
         return "INCONCLUSIVE", "the child stopped on unexpected signal %d" % sig
     if observed["report"] is None or rc != 0:
         return "INCONCLUSIVE", "the child exited %s without a report" % rc
-    if clean["exception_type"] == "MemoryError":
-        return "RESOURCE_EXHAUSTION", "the library call ran out of its %d MB memory limit" % CALL_MEMORY_MB
+    # The child's MemoryError alone is not evidence: code the library ran in
+    # the child can write any report it likes. Count it only when this
+    # process saw the child's memory actually approach the cap.
+    if clean["exception_type"] == "MemoryError" and (observed["peak_rss_mb"] or 0) >= MEMORY_EXHAUSTION_MB:
+        return "RESOURCE_EXHAUSTION", "the library call ran out of its %d MB memory limit (%.0f MB peak)" % (
+            CALL_MEMORY_MB, observed["peak_rss_mb"])
     return "NOT_REPRODUCED", "the library call finished without code execution, crash or resource exhaustion"
 
 

@@ -157,9 +157,28 @@ class AuditCheats(unittest.TestCase):
                 self.assertFalse(run["marker_created"])
 
     def test_memory_exhaustion_is_classified(self):
-        hog = code_exec_payload("x = bytearray(400 * 1024 * 1024)\n")
+        # Grows memory step by step, so the parent sees the peak itself.
+        hog = code_exec_payload("x = [bytearray(1024 * 1024) for _ in range(400)]\n")
         run = sandbox.run_poc("full_load", hog, "vulnerable")
         self.assertEqual(run["outcome"], "RESOURCE_EXHAUSTION", run)
+
+    def test_forged_memory_error_report_is_not_exhaustion(self):
+        # Code running in the child writes its own report claiming MemoryError
+        # and exits cleanly, without touching memory or the marker.
+        forge = code_exec_payload(
+            "import os, sys\n"
+            "f = os.fdopen(int(sys.argv[4]), 'w')\n"
+            "f.write('{\"returned\": false, \"exception_type\": \"MemoryError\", \"events\": []}')\n"
+            "f.flush()\n"
+            "os._exit(0)\n")
+        run = sandbox.run_poc("full_load", forge, "vulnerable")
+        self.assertEqual(run["exception_type"], "MemoryError", run)  # the forgery did arrive
+        self.assertEqual(run["outcome"], "NOT_REPRODUCED", run)
+
+    def test_single_huge_allocation_is_not_exhaustion(self):
+        # One allocation larger than the cap fails at once with almost no memory used.
+        run = sandbox.run_poc("full_load", code_exec_payload("x = bytearray(400 * 1024 * 1024)\n"), "vulnerable")
+        self.assertEqual(run["outcome"], "NOT_REPRODUCED", run)
 
 
 @unittest.skipUnless(DOCKER, "Docker is not running")

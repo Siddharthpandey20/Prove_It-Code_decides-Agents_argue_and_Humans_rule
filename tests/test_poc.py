@@ -95,6 +95,26 @@ class Fixtures(unittest.TestCase):
         self.assertTrue(merged.complete())
         self.assertEqual(merged.entry_point, "safe_load")
 
+    def test_entry_point_only_followup_keeps_the_payload(self):
+        first = reports.parse("Claimed impact: code execution\n\n```yaml\n!!python/object/new:tuple [x]\n```\n")
+        self.assertEqual(first.missing, ["entry_point"])
+        merged = reports.merge(first, "Entry point: yaml.full_load")
+        self.assertEqual((merged.entry_point, merged.missing, merged.poc_problem), ("full_load", [], ""))
+        self.assertEqual(merged.payload, first.payload)
+
+    def test_entry_point_only_followup_fixes_an_unknown_entry_point(self):
+        first = reports.parse("Entry point: yaml.whatever\nClaimed impact: code execution\n\n```yaml\na: 1\n```\n")
+        self.assertEqual(first.poc_problem, "unknown_entry_point")
+        merged = reports.merge(first, "Entry point: yaml.safe_load")
+        self.assertTrue(merged.complete())
+        self.assertEqual(merged.payload, first.payload)
+
+    def test_followup_with_python_still_replaces_the_proof(self):
+        first = reports.parse("Claimed impact: code execution\n\n```yaml\na: 1\n```\n")
+        merged = reports.merge(first, "```python\nimport yaml\n```\n")
+        self.assertEqual(merged.poc_problem, "python_code")
+        self.assertFalse(merged.complete())
+
     def test_billion_laughs(self):
         t = reports.parse(replay("03-slop-billion-laughs.md"))
         self.assertEqual((t.claim, t.entry_point, t.complete()), ("denial_of_service", "safe_load", True))

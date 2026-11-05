@@ -106,10 +106,16 @@ def merge(previous, followup_text):
     """A reporter's follow-up in the same thread replaces the proof and fills gaps."""
     update = parse(followup_text)
     merged = Ticket(**previous.to_dict())
-    if update.payload or update.poc_problem or update.entry_point:
+    if update.payload or update.poc_problem:
+        # A new proof (or a rejected one) replaces the old proof.
         merged.payload = update.payload
         merged.entry_point = update.entry_point or (previous.entry_point if update.payload else "")
         merged.poc_problem = update.poc_problem
+    elif update.entry_point:
+        # Only an entry point: it completes the payload already on file.
+        merged.entry_point = update.entry_point
+        if merged.poc_problem in ("unknown_entry_point", "no_entry_point"):
+            merged.poc_problem = ""
     if not merged.claim and update.claim:
         merged.claim = update.claim
     if merged.severity == "unrated" and update.severity != "unrated":

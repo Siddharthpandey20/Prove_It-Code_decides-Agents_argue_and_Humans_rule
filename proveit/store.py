@@ -135,7 +135,7 @@ def private_root():
     if explicit:
         return Path(explicit)
     if work_dir().resolve() == config.DEFAULT_WORK_DIR.resolve():
-        return config.PROVEIT_HOME / "private"
+        return config.ensure_home() / "private"
     return work_dir().parent / ".proveit-private"
 
 

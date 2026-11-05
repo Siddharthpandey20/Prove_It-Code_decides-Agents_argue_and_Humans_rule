@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 from . import poc
-from .config import PROVEIT_HOME, SANDBOX_LIMITS, TARGET, TARGET_DIR
+from .config import SANDBOX_LIMITS, TARGET, TARGET_DIR, ensure_home
 
 HARNESS_FILES = ("Dockerfile", "harness.py", "child.py")
 
@@ -121,8 +121,8 @@ def _mount_root():
     The staged payload is reporter material, so it lives with the rest of it,
     where neither agent may read.
     """
-    root = PROVEIT_HOME / "mounts"
-    root.mkdir(parents=True, exist_ok=True)
+    root = ensure_home() / "mounts"
+    root.mkdir(exist_ok=True)
     return root
 
 

@@ -117,3 +117,8 @@ Record agent cost per report from Switch ROI or your provider's dashboard: `pyth
 | `#proveit-intake has no Switch room link labelled 'triage'` | Deploy the template (it creates the link) or run setup with `--create-rooms` |
 | Agents in triage do not answer | Console must stay open; mention them with `@` and the exact name, as the deployer |
 | `refused: only humans may override` | You ran it from an agent's shell (`PROVEIT_ACTOR=agent`); run it in your own terminal |
+| Anything else | Run `python -m proveit doctor`: it checks Docker, the images, Intake, the rooms, the maintainers, the agents' folders and trust, and says what to fix |
+| Template run says `Read timed out` for both rooms, and Mattermost stops answering | Mattermost itself crashed (seen on 2026-11-05: a segfault in `getChannelsForTeamForUser` while rooms were deleted and recreated). Restart its container (`docker restart switchdash-local-mattermost-mattermost-1`), wait for `curl http://127.0.0.1:<port>/api/v4/system/ping`, then run the template again. Avoid deleting and recreating rooms just before recording |
+| `scripts/replay.py` posts but Intake never answers | It posted into a channel left over from an earlier deployment. Current versions pick the newest channel with that display name; check with `python scripts/replay.py thread 01` |
+| The Skeptic's messages show as "admin" in Mattermost | Cosmetic: Switch posts that Codex session under the deployer's Mattermost identity. Switch still tells Intake the sender is `prove-it-skeptic`, which is what Intake checks before recording a verdict |
+| `Refused: only Prove It's maintainers can ...` | Add yourself: `python -m proveit.intake maintainers add <your Mattermost username>`, then restart `python -m proveit.intake run` |

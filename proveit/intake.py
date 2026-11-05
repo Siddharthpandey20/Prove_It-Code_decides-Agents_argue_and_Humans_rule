@@ -29,7 +29,7 @@ import threading
 from pathlib import Path
 
 from . import actions, evidence, messages, reports, screen, states, store
-from .config import LEGACY_STATE_DIR, PROVEIT_HOME
+from .config import LEGACY_STATE_DIR, PROVEIT_HOME, ensure_home
 from .switch_client import Agent, CursorStore, SwitchError, open_to_everyone, register_agent
 
 log = logging.getLogger("proveit.intake")
@@ -83,9 +83,17 @@ def split_names(text):
 def move_legacy_state():
     """Older versions kept Intake's credentials in the checkout's .proveit/; move them out of the agents' reach."""
     if not os.environ.get("PROVEIT_STATE") and not STATE_FILE.exists() and LEGACY_STATE_FILE.exists():
-        STATE_FILE.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        ensure_home()
         LEGACY_STATE_FILE.replace(STATE_FILE)
+        _private_file(STATE_FILE)
         log.info("moved %s to %s", LEGACY_STATE_FILE, STATE_FILE)
+
+
+def _private_file(path):
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
 
 
 def load_state():
@@ -96,12 +104,11 @@ def load_state():
 
 
 def save_state(state):
-    STATE_FILE.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if STATE_FILE.parent == PROVEIT_HOME:
+        ensure_home()
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     STATE_FILE.write_text(json.dumps(state, indent=2), encoding="utf-8")
-    try:
-        os.chmod(STATE_FILE, 0o600)
-    except OSError:
-        pass
+    _private_file(STATE_FILE)
 
 
 def cmd_setup(args):

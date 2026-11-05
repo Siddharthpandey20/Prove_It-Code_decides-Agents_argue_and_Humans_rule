@@ -27,6 +27,14 @@ def _checkout_home():
 
 
 PROVEIT_HOME = Path(os.environ.get("PROVEIT_HOME") or _checkout_home())
+
+
+def ensure_home():
+    """Create ~/.proveit/<checkout> if needed, readable by this user only."""
+    PROVEIT_HOME.mkdir(parents=True, exist_ok=True)
+    if os.name == "posix":
+        os.chmod(PROVEIT_HOME, 0o700)
+    return PROVEIT_HOME
 LEGACY_STATE_DIR = REPO_ROOT / ".proveit"  # where versions before 2026-11-05 kept credentials
 
 # The pinned target. PyYAML's CVE-2020-14343 is triggered by a YAML document

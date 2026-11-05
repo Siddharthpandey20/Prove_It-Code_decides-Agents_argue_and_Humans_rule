@@ -12,6 +12,7 @@
   cost R-001 --usd X --source S  a maintainer records agent cost from Switch ROI or a dashboard (humans only)
   tally                          totals for the demo's closing slide
   submit FILE                    create a ticket from a report file, without Switch
+  doctor [--offline]             is this machine ready for the demo? (changes nothing)
 
 Agents run these with PROVEIT_ACTOR=agent and PROVEIT_AGENT=reproducer or
 skeptic, both set by the agent's own config (agents/reproducer/.claude/settings.json,
@@ -135,6 +136,13 @@ def cmd_tally(args):
         print(actions.tally_text(t))
 
 
+def cmd_doctor(args):
+    from . import doctor
+    report = doctor.run(live=not args.offline)
+    if report.failed:
+        sys.exit(1)
+
+
 def cmd_submit(args):
     """Offline intake for one report file: the same parsing and screening as the agent."""
     from .intake import fill, target_for
@@ -176,6 +184,9 @@ def main(argv=None):
     p.add_argument("--source", required=True); p.add_argument("--by", default="maintainer"); p.set_defaults(fn=cmd_cost)
     p = sub.add_parser("tally"); p.add_argument("--json", action="store_true"); p.set_defaults(fn=cmd_tally)
     p = sub.add_parser("submit"); p.add_argument("file"); p.set_defaults(fn=cmd_submit)
+    p = sub.add_parser("doctor", help="check this machine is ready for the demo")
+    p.add_argument("--offline", action="store_true", help="skip the checks that need the Switch server")
+    p.set_defaults(fn=cmd_doctor)
     args = parser.parse_args(argv)
     refusal = refuse_for_role(args.cmd)
     if refusal:

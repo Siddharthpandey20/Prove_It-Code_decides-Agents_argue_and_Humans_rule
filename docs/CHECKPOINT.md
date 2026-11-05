@@ -84,10 +84,12 @@ Finding numbers (F1 to F31) refer to the assessment.
 
 ## H. Demo tooling and preflight (F13, F14, F30, F31)
 
-- [ ] H1 `scripts/replay.py` works against Console's native server: login from `.proveit/reporter.json` or env, port from Console's `ports.json`, channel found by display name with stale channels ignored.
-- [ ] H2 `python -m proveit doctor` checks: Docker, both images current, Switch server reachable, Intake registered, rooms and `triage` link, triage private, agents present and in their own folders, maintainers set, reporter login for replays.
-- [ ] H3 Tests for doctor's checks that do not need live services.
-- [ ] H4 SETUP troubleshooting covers the Mattermost crash on room changes and the "admin" display name for Codex posts.
+- [x] H1 `scripts/replay.py` works against Console's native server: `replay.py login` saves a login to `~/.proveit/<checkout>/reporter.json` (older `.proveit/reporter.json` and env still work), port from Console's `ports.json`, channel found by display name, newest wins so leftovers are ignored, the public intake channel is joined if needed.
+- [x] H2 `python -m proveit doctor` checks: Docker, both images current, Switch server reachable, Intake registered, rooms and `triage` link, triage private, agents present and in their own folders, maintainers set, reporter login for replays.
+- [x] H3 Tests for doctor's checks that do not need live services.
+- [x] H4 SETUP troubleshooting covers the Mattermost crash on room changes and the "admin" display name for Codex posts.
+
+  Evidence: `python -m proveit doctor` run live on this machine (it found the real remaining problems: triage still public and no maintainers set, both fixed in J3), and it changes nothing (a bug where it moved the credentials file was found and fixed). `tests/test_doctor.py` (15 tests: agent folders and `auto` mode, missing maintainers, never moves files, private home 700 / login file 600, login precedence and Console port, newest channel wins, public channel joined, deleted channels ignored, agents may not run the doctor). 159 tests OK. The SETUP row about Switch naming the Skeptic as the sender is confirmed or corrected in J4.
 
 ## I. Honest metrics and scope (F26, F27)
 
@@ -100,7 +102,7 @@ Finding numbers (F1 to F31) refer to the assessment.
 - [ ] J1 Headless e2e (`scripts/e2e.py`) rerun on this branch; log saved to `docs/evidence/`.
 - [ ] J2 Rehearsal twice on this branch.
 - [ ] J3 Console redeployed from the updated template; Intake restarted on the new code.
-- [ ] J4 Live run in Switch Console with the real Claude Reproducer and Codex Skeptic: check, patched check, Skeptic review, maintainer decision, reporter reply. Room log and ticket JSON saved to `docs/evidence/`.
+- [ ] J4 (also confirm what sender name Intake receives for the Skeptic's posts, and correct SETUP's troubleshooting row if needed) Live run in Switch Console with the real Claude Reproducer and Codex Skeptic: check, patched check, Skeptic review, maintainer decision, reporter reply. Room log and ticket JSON saved to `docs/evidence/`.
 - [ ] J5 Live permission checks: each agent asked to read `private/` and to run a forbidden command; results recorded.
 - [ ] J6 Live outsider check: a non-maintainer's `close` is refused in the real room.
 

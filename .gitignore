@@ -1,5 +1,14 @@
+# Tickets, reporter material and run evidence from local use
 work/
+# Agent credentials and the private Switch server's .env (tokens, passwords)
 .proveit/
+.env
+.env.*
+# Local logs can contain tokens; only redacted evidence under docs/evidence/ is committed
+*.log
+!docs/evidence/*.log
+# Personal Claude Code overrides
+.claude/settings.local.json
+**/.claude/settings.local.json
 __pycache__/
 *.pyc
-.env

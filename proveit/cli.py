@@ -12,6 +12,8 @@
   cost R-001 --usd X --source S  a maintainer records agent cost from Switch ROI or a dashboard (humans only)
   tally                          totals for the demo's closing slide
   submit FILE                    create a ticket from a report file, without Switch
+  export R-001 [--out DIR]       the ticket's evidence as a folder with a SHA-256 manifest
+  export --verify DIR            check an exported folder against its manifest
   doctor [--offline]             is this machine ready for the demo? (changes nothing)
 
 Agents run these with PROVEIT_ACTOR=agent and PROVEIT_AGENT=reproducer or
@@ -32,10 +34,10 @@ from . import actions, evidence, judge, reports, sandbox, screen, states, store
 from .config import ENTRY_POINTS, TARGET
 
 
-READ_ONLY = {"evidence", "show", "list", "tally", "export"}
+READ_ONLY = {"evidence", "show", "list", "tally"}
 # What each agent role may run. The Reproducer produces evidence; the Skeptic judges it.
 ROLE_COMMANDS = {
-    "reproducer": READ_ONLY | {"check"},
+    "reproducer": READ_ONLY | {"check", "export"},
     # The Skeptic only reads. It records concur / dispute by posting them to Intake in the
     # triage room, where Switch vouches for the sender, so no shell can speak for it.
     "skeptic": set(READ_ONLY),
@@ -136,6 +138,21 @@ def cmd_tally(args):
         print(actions.tally_text(t))
 
 
+def cmd_export(args):
+    from . import export
+    if args.verify:
+        problems = export.verify(args.verify)
+        for problem in problems:
+            print(problem)
+        if problems:
+            sys.exit("export %s does NOT match its manifest" % args.verify)
+        print("export %s matches its manifest" % args.verify)
+        return
+    if not args.ticket:
+        sys.exit("give a ticket id, or --verify <folder>")
+    print("exported %s to %s" % (args.ticket, export.export(args.ticket, args.out)))
+
+
 def cmd_doctor(args):
     from . import doctor
     report = doctor.run(live=not args.offline)
@@ -184,6 +201,8 @@ def main(argv=None):
     p.add_argument("--source", required=True); p.add_argument("--by", default="maintainer"); p.set_defaults(fn=cmd_cost)
     p = sub.add_parser("tally"); p.add_argument("--json", action="store_true"); p.set_defaults(fn=cmd_tally)
     p = sub.add_parser("submit"); p.add_argument("file"); p.set_defaults(fn=cmd_submit)
+    p = sub.add_parser("export"); p.add_argument("ticket", nargs="?"); p.add_argument("--out")
+    p.add_argument("--verify", metavar="DIR"); p.set_defaults(fn=cmd_export)
     p = sub.add_parser("doctor", help="check this machine is ready for the demo")
     p.add_argument("--offline", action="store_true", help="skip the checks that need the Switch server")
     p.set_defaults(fn=cmd_doctor)

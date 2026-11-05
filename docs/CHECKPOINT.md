@@ -116,7 +116,7 @@ Finding numbers (F1 to F31) refer to the assessment.
 
 ## L. Future work (F31 list)
 
-- [ ] L1 `python -m proveit export R-001`: a folder of fixed-field evidence (ticket, runs, SHA-256 manifest), no reporter text. Tested.
+- [x] L1 `python -m proveit export R-001`: a folder of fixed-field evidence (ticket, runs, SHA-256 manifest), no reporter text. Tested.
 - [ ] L2 README "After the hackathon" section: adapters, GitHub/HackerOne intake, separate OS user for agents, automatic fixing as a separate workflow.
 
 ## M. Only a person can do these

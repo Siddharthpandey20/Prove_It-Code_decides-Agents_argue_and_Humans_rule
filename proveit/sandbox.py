@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import secrets
 import shutil
 import subprocess
@@ -78,6 +79,13 @@ def docker_flags(name, poc_dir):
     ]
 
 
+def _readable_by_sandbox(folder):
+    """The container runs as uid 65534; on Linux hosts it must be able to read the read-only mount."""
+    os.chmod(folder, 0o755)
+    for child in Path(folder).iterdir():
+        os.chmod(child, 0o644)
+
+
 def _execute(cmd, stdin_text, name):
     try:
         proc = subprocess.run(cmd, input=stdin_text, capture_output=True, text=True,
@@ -111,6 +119,7 @@ def run_poc(entry_point, payload, build_name="vulnerable"):
         poc_dir = Path(tmp)
         (poc_dir / "job.json").write_text(json.dumps({"entry_point": entry_point}), encoding="utf-8")
         (poc_dir / "payload.yaml").write_bytes(payload.encode("utf-8"))
+        _readable_by_sandbox(poc_dir)
         exit_code, stdout, timed_out = _execute(docker_flags(name, poc_dir) + [spec["image"]], nonce + "\n", name)
 
     prefix = "@@PROVEIT %s " % nonce
@@ -130,6 +139,7 @@ def run_probe(code, build_name="vulnerable", timeout=None):
     spec = TARGET["builds"][build_name]
     name = "proveit-probe-%s" % secrets.token_hex(6)
     with tempfile.TemporaryDirectory(prefix="proveit-") as tmp:
+        _readable_by_sandbox(tmp)
         cmd = docker_flags(name, tmp) + ["--entrypoint", "python", spec["image"], "-I", "-c", code]
         exit_code, stdout, timed_out = _execute(cmd, "", name)
     return {"exit_code": exit_code, "output": stdout, "timed_out": timed_out}

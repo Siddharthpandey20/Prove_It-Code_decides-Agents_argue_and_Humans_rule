@@ -41,6 +41,8 @@ def code_exec_payload(code):
 
 
 def setUpModule():
+    if not DOCKER and os.environ.get("PROVEIT_REQUIRE_DOCKER"):
+        raise RuntimeError("PROVEIT_REQUIRE_DOCKER is set but Docker is not available")
     if DOCKER:
         sandbox.build()
 

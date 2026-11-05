@@ -188,6 +188,8 @@ def main(argv=None):
         sys.exit("refused: %s" % exc)
     except FileNotFoundError as exc:
         sys.exit("no such ticket: %s" % exc)
+    except sandbox.SandboxError as exc:
+        sys.exit("sandbox error: %s" % exc)
 
 
 if __name__ == "__main__":

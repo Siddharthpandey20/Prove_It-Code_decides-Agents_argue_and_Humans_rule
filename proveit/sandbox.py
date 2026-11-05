@@ -15,16 +15,34 @@ from .config import PROVEIT_HOME, SANDBOX_LIMITS, TARGET, TARGET_DIR
 HARNESS_FILES = ("Dockerfile", "harness.py", "child.py")
 
 
+# Every Docker call has a timeout, so a stuck daemon fails loudly instead of hanging a command.
+PROBE_TIMEOUT = 20      # docker info, image inspect, docker kill
+BUILD_TIMEOUT = 1800    # building an image from scratch (downloads and compiles PyYAML)
+
+
 class SandboxError(RuntimeError):
     pass
 
 
+def _docker(cmd, timeout, **kwargs):
+    """Run one docker command with a timeout; a timeout raises SandboxError with what was running."""
+    try:
+        return subprocess.run(cmd, timeout=timeout, **kwargs)
+    except subprocess.TimeoutExpired:
+        raise SandboxError("`%s` did not finish within %d s; is Docker responding? (try `docker info`)"
+                           % (" ".join(cmd[:3]), timeout)) from None
+
+
 def docker_available():
+    """A running Docker engine that runs Linux containers (Docker Desktop in Windows-containers mode cannot)."""
     if not shutil.which("docker"):
         return False
-    probe = subprocess.run(["docker", "info", "--format", "{{.ServerVersion}}"],
-                           capture_output=True, text=True)
-    return probe.returncode == 0
+    try:
+        probe = _docker(["docker", "info", "--format", "{{.OSType}}"], PROBE_TIMEOUT,
+                        capture_output=True, text=True)
+    except SandboxError:
+        return False
+    return probe.returncode == 0 and probe.stdout.strip().lower() == "linux"
 
 
 def harness_digest():
@@ -36,9 +54,9 @@ def harness_digest():
 
 
 def image_current(image):
-    probe = subprocess.run(["docker", "image", "inspect", "--format",
-                            '{{ index .Config.Labels "proveit.harness" }}', image],
-                           capture_output=True, text=True)
+    probe = _docker(["docker", "image", "inspect", "--format",
+                     '{{ index .Config.Labels "proveit.harness" }}', image], PROBE_TIMEOUT,
+                    capture_output=True, text=True)
     return probe.returncode == 0 and probe.stdout.strip() == harness_digest()
 
 
@@ -52,11 +70,27 @@ def build(build_name=None, force=False, quiet=True):
             continue
         cmd = ["docker", "build", "--build-arg", "PYYAML_VERSION=%s" % spec["version"],
                "--label", "proveit.harness=%s" % harness_digest(), "-t", spec["image"], str(TARGET_DIR)]
-        if quiet:
-            cmd.insert(2, "-q")
-        result = subprocess.run(cmd, capture_output=quiet, text=True)
-        if result.returncode != 0:
-            raise SandboxError("building %s failed:\n%s" % (spec["image"], (result.stderr or "")[-2000:]))
+        # Docker's output is always captured, so a failure can show its end; when not quiet it is also echoed.
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+        tail = []
+        try:
+            for line in proc.stdout:
+                tail = (tail + [line])[-60:]
+                if not quiet:
+                    print(line, end="")
+            proc.wait(timeout=BUILD_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            raise SandboxError("building %s took longer than %d s" % (spec["image"], BUILD_TIMEOUT)) from None
+        finally:
+            proc.stdout.close()
+        if proc.returncode != 0:
+            hint = ""
+            if any("do not match the hashes" in line or "THESE PACKAGES DO NOT MATCH" in line for line in tail):
+                hint = ("\nA download did not match its SHA-256: a corrupted download, proxy or cache, not the "
+                        "Dockerfile. Retry, or run `docker builder prune` and build again.")
+            raise SandboxError("building %s failed (exit %s). Last lines of Docker's output:\n%s%s" % (
+                spec["image"], proc.returncode, "".join(tail).rstrip(), hint))
         built.append(spec["image"])
     return built
 
@@ -105,7 +139,10 @@ def _execute(cmd, stdin_text, name):
                               timeout=SANDBOX_LIMITS["timeout_seconds"])
         return proc.returncode, proc.stdout or "", False
     except subprocess.TimeoutExpired as exc:
-        subprocess.run(["docker", "kill", name], capture_output=True)
+        try:
+            subprocess.run(["docker", "kill", name], capture_output=True, timeout=PROBE_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            pass  # --rm and the container's own limits still end it
         out = exc.stdout or ""
         return None, out.decode(errors="replace") if isinstance(out, bytes) else out, True
 

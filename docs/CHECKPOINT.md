@@ -74,11 +74,13 @@ Finding numbers (F1 to F31) refer to the assessment.
 
 ## G. Builds and tests everywhere (F10, F11, F12, F20)
 
-- [ ] G1 `tests/test_harness.py` skips on non-POSIX systems instead of failing discovery.
-- [ ] G2 CI runs the unit tests on `windows-latest` (Docker tests skip there) as well as the full suite on Ubuntu.
-- [ ] G3 Dockerfile pins exact Cython and wheel versions.
-- [ ] G4 Every Docker call has a timeout; build failures include Docker's output.
-- [ ] G5 Fresh `python -m proveit build --force` on the demo machine, then the full suite with `PROVEIT_REQUIRE_DOCKER=1`, no unexpected skips.
+- [x] G1 `tests/test_harness.py` skips on non-POSIX systems instead of failing discovery.
+- [ ] G2 CI runs the unit tests on `windows-latest` (Docker tests skip there) as well as the full suite on Ubuntu. *Job added to `.github/workflows/ci.yml`; ticked when the PR's CI run passes (group N).*
+- [x] G3 Dockerfile pins exact Cython and wheel versions.
+- [x] G4 Every Docker call has a timeout; build failures include Docker's output.
+- [x] G5 Fresh `python -m proveit build --force` on the demo machine, then the full suite with `PROVEIT_REQUIRE_DOCKER=1`, no unexpected skips.
+
+  Evidence (macOS 27.2 arm64, Docker 29.5.2, Python 3.9.6, Codex 0.166.0): `docker build --no-cache` of both images succeeds and installs PyYAML 5.3.1 / 5.4 with Cython 0.29.37 and wheel 0.45.1; `python -m proveit build --force` then `PROVEIT_REQUIRE_DOCKER=1 python -m unittest discover -s tests -v`: 144 tests OK, none skipped; rehearsal twice identical. Windows discovery simulated by hiding `resource`: no import failures (`tests/test_portability.py`). `docker_available()` now also requires a Linux engine, so Docker Desktop in Windows-containers mode (and the Windows CI runner) skips the sandbox tests instead of failing. G4: `tests/test_portability.py` checks every `subprocess.run` / `wait` in `sandbox.py` has a timeout, and that build failures show Docker's last lines (with a hint for SHA-256 mismatches). F11's Cython hash mismatch is a download problem, not a code defect.
 
 ## H. Demo tooling and preflight (F13, F14, F30, F31)
 

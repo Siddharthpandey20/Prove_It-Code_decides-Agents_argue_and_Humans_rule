@@ -4,6 +4,13 @@ Record each case separately so one slow agent reply does not ruin a take. Before
 
 Before recording, rehearse offline: `python scripts/rehearse.py --twice` must end with `REHEARSAL PASSED (both runs identical)`.
 
+Every scene below was run live in Switch Console 0.40.1 on Windows 11 on 2026-11-06, with Claude Code as the Reproducer and Codex as the Skeptic ([room log](evidence/live-console-2026-11-06-windows.log)). Things learned there:
+
+- Each agent reply takes 20 to 60 seconds; cut the waiting in the edit.
+- If Intake does not react to a message within about 10 seconds, send it again (Switch dropped two of about a dozen human messages that night).
+- The Skeptic concurs on a `NOT_REPRODUCED` result only with the current instructions (template revision of 2026-11-06). If it disputes R-002, the maintainer can still close it.
+- Agents' posts show as "admin" in Mattermost; say "the Reproducer" and "the Skeptic" in the voiceover.
+
 | Time | Scene | What to show | How |
 | --- | --- | --- | --- |
 | 0:00 | Problem (20 s) | curl ends its bounty (Jan 2026) and stops taking reports for July; HackerOne pauses its bounty; Elastic gets more reports in six months than in two years. "Writing a fake report costs AI ten seconds. Checking it costs a maintainer an hour." Then: "Code decides, agents argue, humans rule." | slides |

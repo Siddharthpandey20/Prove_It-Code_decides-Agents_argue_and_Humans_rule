@@ -2,7 +2,7 @@
 
 > **Role:** Shared source of truth for Team Pikachu and AI agents during the Flip the Switch hackathon. Read this before changing the project; use the linked files for operational detail.
 
-Last reviewed: 2026-11-05 (IST). Status combines the repository at `7b42217` with the team's answers on 2026-11-05. A recorded result is not a claim that it was rerun today.
+Last reviewed: 2026-11-06 (IST). Status combines the repository at `7b42217` with the team's answers on 2026-11-05. A recorded result is not a claim that it was rerun today.
 
 ## Project overview
 
@@ -43,9 +43,9 @@ The following rules govern all hackathon work:
 
 ## Current status
 
-**As of 2026-11-05:** Core code, test suite, repeatable rehearsal, and a headless Switch 0.31.0 end-to-end run are recorded. [The run log](docs/evidence/e2e-2026-11-05.log) ends in `E2E PASSED`; CI is configured to build both images, run tests, and rehearse twice. The team confirms that no additional demo, Trust, blog, or submission work has been completed since the last repository update. The live two-agent workflow in Switch Console remains the main unverified gap.
+**As of 2026-11-06 03:30 IST:** The live two-agent workflow is verified in Switch Console 0.40.1 on Windows 11 (local server 0.31.0, Mattermost), with Claude Code 2.1.318 as the Reproducer and Codex 0.166.0 as the Skeptic, both managed agents on the same computer. All four replays and every demo step ran live: check, patched check, Skeptic review, refused escalation, override, escalate, close, quarantine, refused escalation of a quarantined report, and the tally (2 closed, 1 escalated, 1 quarantined, matching the rehearsal). Evidence: [room log](docs/evidence/live-console-2026-11-06-windows.log), [R-001 export](docs/evidence/live-2026-11-06-windows-R-001/). On this machine: 166 tests OK (11 Unix-only skips), rehearsal twice identical. The demo machine's Claude sign-in is valid until 2026-12-04.
 
-**Next action:** Set up Switch Console on the demo machine, sign in Claude Code and Codex, deploy the template, and verify both agents work in a real triage room. Check the demo machine's Claude sign-in before the deadline; the former team brief warned that its session might expire around November 7–10, but its current state has not been checked.
+**Next action:** Reset (stop Intake, delete `work/`, start Intake) and record the demo video by Nov 7; submit by **Nov 7, 11:59 PM IST**. Optional: Switch Trust (SETUP section 5) and the live permission probes (CHECKPOINT J5).
 
 ## Progress and deadlines
 
@@ -54,8 +54,8 @@ The following rules govern all hackathon work:
 | Data-only proof sandbox, evidence-only routing, state machine | Done | Historical team work | Implementation and tests in Git; see decisions and history below. |
 | Offline tests and four-report rehearsal | Recorded as passing | Unassigned | Latest README reports 74 tests and a two-run rehearsal; rerun on the final demo machine and record the actual result. |
 | Headless Switch/Mattermost end-to-end | Done | Historical team work | [2026-11-05 log](docs/evidence/e2e-2026-11-05.log) records `E2E PASSED`. This uses scripted agent choices. |
-| Live Claude Code + Codex in Switch Console | Pending | Unassigned | Both agents receive the intended room instructions, run their allowed commands, and post evidence-based results in the real room. Record machine, versions, and observations. |
-| Agent permissions on the demo machine | Pending verification | Unassigned | Confirm both folder settings apply, Bypass permissions is off, and the Skeptic can write only its intended result. |
+| Live Claude Code + Codex in Switch Console | Done 2026-11-06 | Unassigned (run on the Windows demo machine) | Windows 11, Console 0.40.1, Claude Code 2.1.318, Codex 0.166.0; every demo step ran live. [Room log](docs/evidence/live-console-2026-11-06-windows.log). |
+| Agent permissions on the demo machine | Partly verified | Unassigned | Done: Bypass permissions off for both, checkout trusted by Claude Code and Codex, agents ran only `proveit` commands. Not done: asking an agent to read `~/.proveit` or run a forbidden command (CHECKPOINT J5). Codex's sandbox profile tests skip on Windows. |
 | Switch Trust guardrail and replay 04 | Pending setup | Unassigned | Configure Trust, post replay 04, and record whether it is blocked before reaching intake. Intake's existing quarantine is the fallback. |
 | Public repo and accurate README | Repo exists; final review pending | Unassigned | Confirm public access and update verification claims after the live run. |
 | Short demo video | Deferred from immediate priorities; required for submission | Unassigned | Record the running workflow and include its link in the submission by **Nov 7, 11:59 PM IST**. |
@@ -87,10 +87,11 @@ All dated entries below are **2026-11-05 IST** unless noted. Commit links are gi
 | Nov 5, `61e2d84`, `cff4e10` | PyYAML 5.4's ARM64 build and Docker mount behavior caused Apple silicon problems. | Changed the Docker build and temporary mount location; later fixed the build/run path again. Verify on the final demo machine. |
 | Nov 5, `c1c54e4` | Ran Intake against Switch 0.31.0 and Mattermost. | Headless end-to-end replay passed and was logged. It did not exercise live LLM agents. |
 | Nov 5, `c1b36bb`, merged by `7b42217` | Review found a child-forged `MemoryError`, overly broad Skeptic file reads, and a follow-up that erased a saved payload. | Fixed classification, permission rules, and follow-up merging; added tests. The latest README reports 74 tests. |
+| Nov 6, Windows 11 demo machine | Live Console run. Problems met and fixed: `proveit build` crashed on the Windows console encoding; the template's `location: local` and provider fallback lists left Claude/Codex "Not supported here" on a Console with managed agents; Console's checkout box doubled paths; a stale process id (`kill EPERM`) kept the agents controller from reporting; Mattermost's container stopped after a Docker restart; the Skeptic disputed sound NOT_REPRODUCED results. | Fixed in code, template (`location: [$first]`, single provider defaults, Skeptic verdict rules) and SETUP troubleshooting; added `switch/prove-it.rooms.template.yaml`. A WSL/SSH-host route was tried first and is not needed. Two human messages never reached Intake (Switch side, cause unknown); resending worked. |
 
 ## Open questions and risks
 
-- **Live agent behavior:** Will both vendors' agents follow the intended workflow and permissions in the final Switch Console environment? This is the next test, not a known success.
+- **Live agent behavior:** Verified on 2026-11-06 for the demo workflow. Open: Switch occasionally not delivering a human message to Intake (twice in one session), and agent replies taking 20 to 60 s; both affect the recording, not the result.
 - **Trust configuration:** Can the team configure and demonstrate the guardrail before submission? If not, describe the actual Intake quarantine only.
 - **Submission logistics:** The exact form, video link, and submitting teammate have not been recorded. Assign these before Nov 7.
 - **Demo machine readiness:** Check Claude/Codex sign-in, Docker, and Switch Console before recording; do not assume the earlier dry run covers this machine.

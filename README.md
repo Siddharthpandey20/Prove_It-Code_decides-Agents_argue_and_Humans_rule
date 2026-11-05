@@ -101,11 +101,11 @@ A report is attacker-controlled text that ends up near agents that can run comma
 | Python | 3.9 or newer, standard library only (nothing to `pip install`) | 3.13.1 (Windows 11), 3.12 (CI on Ubuntu 24.04) |
 | Docker | Docker Desktop or Docker Engine | Docker 29.6.2 (Docker Desktop on Windows 11), GitHub Actions `ubuntu-24.04` |
 | Switch server | 0.31.0 | 0.31.0 via `scripts/switch-server.sh` (headless) |
-| Switch Console | for the full demo | tested with: unknown, fill in |
-| Claude Code | Reproducer | tested with: unknown, fill in (not yet run in a room) |
-| Codex | Skeptic | tested with: unknown, fill in (not yet run in a room) |
+| Switch Console | for the full demo | 0.40.1 on Windows 11, with its local Switch server (0.31.0) |
+| Claude Code | Reproducer | 2.1.318, live in a Console room on Windows 11 |
+| Codex | Skeptic | 0.166.0, live in a Console room on Windows 11 |
 
-**Operating systems:** Windows 11 was tested (tests, rehearsal and the headless Switch end-to-end). Ubuntu 24.04 runs the tests and rehearsal in CI. macOS is the intended demo machine and has not been tested yet. On Windows, run the `.sh` script from Git Bash.
+**Operating systems:** Windows 11 was tested end to end: tests, rehearsal, the headless Switch end-to-end, and the full live workflow in Switch Console (2026-11-06). Ubuntu 24.04 runs the tests and rehearsal in CI. macOS is the intended demo machine and has not been tested yet. On Windows, run the `.sh` script from Git Bash.
 
 The sandbox image is `python:3.9-slim`, pinned by digest. Python 3.9 is end of life; that is acceptable here because the image exists only to hold an intentionally old library (PyYAML 5.3.1, from 2020) inside an isolated, no-network container.
 
@@ -187,9 +187,9 @@ One table in [proveit/states.py](proveit/states.py) is enforced by every command
 | State machine, honest messages, tally | Verified offline | `tests/test_states.py`, `tests/test_intake.py` |
 | All four replays, twice, identical | Verified offline | `python scripts/rehearse.py --twice`, CI |
 | Intake over a real Switch 0.31.0 server and Mattermost (protocol, rooms, link, threads, decisions, refusals) | Verified headless | [docs/evidence/e2e-2026-11-05.log](docs/evidence/e2e-2026-11-05.log) |
-| Template | Checked against the server | Accepted by Switch 0.31.0's `save_template` with no warnings, and valid against the JSON schema from its `get_template_guide`. Agent fields are not covered by that schema; they were checked by hand against the guide text |
-| Reproducer (Claude Code) and Skeptic (Codex) working in a live room | **Not yet verified** | Needs a human with Switch Console |
-| Agent lockdown files applied by Claude Code and Codex | **Not yet verified** | Claude settings validate against the published schema; Codex was not installed here |
+| Template | Checked against the server, deployed from Console | Accepted by Switch 0.31.0's `save_template` with no warnings, and valid against the JSON schema from its `get_template_guide`. Deployed from Switch Console 0.40.1 on 2026-11-06 (agents first, then the rooms with [the rooms-only copy](switch/prove-it.rooms.template.yaml) after a Mattermost outage; see SETUP troubleshooting) |
+| Reproducer (Claude Code) and Skeptic (Codex) working in a live room | Verified live (Windows 11, Console 0.40.1) | All four replays, every demo step: check, patched check, Skeptic review, refused escalation, override, escalate, close, quarantine, tally. [Room log](docs/evidence/live-console-2026-11-06-windows.log), [R-001 evidence](docs/evidence/live-2026-11-06-windows-R-001/) |
+| Agent lockdown files applied by Claude Code and Codex | Partly verified | Both folders trusted; in the live run the agents ran only their allowed `proveit` commands. Not yet tried: asking an agent to read `~/.proveit` or run a forbidden command. Codex's read-only profile is tested on macOS and Linux; on Windows those tests skip |
 | Switch Trust blocking fixture 04 | **Not yet configured** | |
 | Trust red-team eval score | **Not yet run** | |
 | Agent cost per report | **Not recorded** | `proveit cost` once a human reads Switch ROI or a provider dashboard |

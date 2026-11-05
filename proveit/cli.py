@@ -1,145 +1,149 @@
-"""`python -m proveit ...` — the commands the agents in #triage run.
+"""`python -m proveit ...`: the commands the agents in #triage and maintainers run.
 
-  build                       build the vulnerable and patched sandbox images
-  run R-001 [--build NAME]    run a ticket's PoC in the sandbox (default: vulnerable)
-  check R-001                 run against both builds and print the verdict
-  trace R-001                 show which library functions the PoC reached
-  show R-001                  print the ticket (never the reporter's prose)
-  list                        list tickets and their status
-  tally                       totals for the demo's closing slide
-  submit FILE                 create a ticket from a report file, without Switch
+  build                          build the vulnerable and patched sandbox images
+  check R-001 [--build patched]  run the ticket's payload on one build (default: vulnerable)
+        [--loader full_load]     ...optionally through another allowlisted entry point
+  evidence R-001                 the evidence pack: fixed fields only, never reporter text
+  show R-001                     the ticket record
+  list                           tickets and their status
+  concur R-001                   the Skeptic could not disprove the evidence
+  dispute R-001 --reason TEXT    the Skeptic disputes it; blocks escalation until a human overrides
+  override R-001 --by NAME       a maintainer overrides a dispute (humans only)
+  cost R-001 --usd X --source S  a maintainer records agent cost from Switch ROI or a dashboard (humans only)
+  tally                          totals for the demo's closing slide
+  submit FILE                    create a ticket from a report file, without Switch
+
+Agents run these with PROVEIT_ACTOR=agent (set in .claude/settings.json and
+.codex/config.toml); override and cost then refuse.
 """
 
 import argparse
 import json
+import os
 import sys
 
-from . import judge, reports, sandbox, screen, store
-from .config import TARGET
+from . import actions, evidence, judge, reports, sandbox, screen, states, store
+from .config import ENTRY_POINTS, TARGET
+
+
+def actor():
+    return "agent" if os.environ.get("PROVEIT_ACTOR", "").strip().lower() == "agent" else "human"
 
 
 def _print(obj):
-    print(json.dumps(obj, indent=2))
-
-
-def _run(ticket_id, build_name, by="cli"):
-    record = store.load(ticket_id)
-    code = store.poc(ticket_id)
-    if not code:
-        sys.exit("%s has no PoC yet" % ticket_id)
-    run = sandbox.run_poc(code, build_name)
-    path = store.save_run(ticket_id, run)
-    record["runs"].append({"build": build_name, "file": path, "at": store.now(), "by": by,
-                           "seconds": run.get("seconds")})
-    store.save(record)
-    return record, run, path
+    print(json.dumps(obj, indent=2, sort_keys=True))
 
 
 def cmd_build(args):
     built = sandbox.build(force=args.force, quiet=False)
-    print("built: %s" % (", ".join(built) or "nothing (images already exist)"))
-
-
-def cmd_run(args):
-    record, run, path = _run(args.ticket, args.build, args.by)
-    verdict, reasons = judge.judge_run(record["claim"], run)
-    print("%s on %s (PyYAML %s): %s" % (args.ticket, args.build, run["target_version"], verdict.upper()))
-    for reason in reasons:
-        print("  - " + reason)
-    print("evidence: " + path)
-    if args.verbose:
-        _print(run)
+    print("built: %s" % (", ".join(built) or "nothing (images are current)"))
 
 
 def cmd_check(args):
-    record, vuln, vuln_path = _run(args.ticket, "vulnerable", args.by)
-    _, patched, patched_path = _run(args.ticket, "patched", args.by)
-    summary = judge.compare(record["claim"], vuln, patched)
-    record = store.load(args.ticket)
-    record["last_check"] = dict(summary, at=store.now(), evidence=[vuln_path, patched_path])
-    store.save(record)
-    print("%s claim=%s component=%s" % (args.ticket, record["claim"], record["component"]))
-    print("vulnerable PyYAML %s: %s" % (TARGET["builds"]["vulnerable"]["version"], summary["vulnerable"].upper()))
-    print("patched    PyYAML %s: %s" % (TARGET["builds"]["patched"]["version"], summary["patched"].upper()))
-    for reason in summary["reasons"]:
-        print("  - " + reason)
-    print("evidence: %s, %s" % (vuln_path, patched_path))
-
-
-def cmd_trace(args):
-    record, run, path = _run(args.ticket, args.build, args.by)
-    frames = []
-    for e in run.get("events", []):
-        for f in e.get("library_frames", []):
-            if f not in frames:
-                frames.append(f)
-    print("%s on %s: %d audited events, %d inside the library" % (
-        args.ticket, args.build, len(run.get("events", [])), sum(1 for e in run.get("events", []) if e["in_library"])))
-    for e in run.get("events", []):
-        print("  %-8s %-44s %s" % ("LIBRARY" if e["in_library"] else "poc", e["detail"][:44], " < ".join(e["library_frames"][:3])))
-    if run.get("error"):
-        err = run["error"]
-        print("  raised %s: %s (in library: %s; at %s)" % (err["type"], err["message"], err.get("in_library"), " > ".join(err.get("where", []))))
-    print("  peak memory %.1f MB, %.3f s" % (run.get("peak_rss_mb") or 0, run.get("seconds") or 0))
+    record, run, path = actions.check(args.ticket, args.build, actor(), args.by, args.loader)
+    print("%s %s build (PyYAML %s) via %s: %s" % (args.ticket, args.build, run["target_version"],
+                                                 run.get("entry_point"), run.get("outcome")))
+    print("  - " + judge.describe(run))
+    print("ticket status: %s" % record["status"])
+    for note in judge.notes(judge.facts(record, evidence.latest_run(record, "vulnerable"),
+                                        evidence.latest_run(record, "patched"))):
+        print("note: " + note)
     print("evidence: " + path)
 
 
+def cmd_evidence(args):
+    pack = evidence.pack(store.load(args.ticket))
+    if args.json:
+        _print(pack)
+    else:
+        print(evidence.text(pack))
+
+
 def cmd_show(args):
-    record = store.load(args.ticket)
-    record["poc_lines"] = len(store.poc(args.ticket).splitlines())
-    _print(record)
+    _print(store.load(args.ticket))
 
 
 def cmd_list(args):
     for r in store.all_tickets():
-        print("%s  %-15s %-18s %-22s %s" % (r["id"], r["status"], r["claim"] or "-", r["component"], r.get("reporter", "")))
+        print("%s  %-15s %-18s %s" % (r["id"], r["status"], r.get("claim") or "-", r.get("entry_point") or "-"))
+
+
+def cmd_concur(args):
+    record = actions.concur(args.ticket, actor(), args.by)
+    print("%s: %s concurs; status %s" % (args.ticket, args.by, record["status"]))
+
+
+def cmd_dispute(args):
+    record = actions.dispute(args.ticket, args.reason, actor(), args.by)
+    print("%s: disputed by %s; escalation is blocked until a maintainer overrides" % (record["id"], args.by))
+
+
+def cmd_override(args):
+    record = actions.override(args.ticket, actor(), args.by, args.note or "")
+    print("%s: override by %s recorded; status %s" % (record["id"], args.by, record["status"]))
+
+
+def cmd_cost(args):
+    record = actions.record_cost(args.ticket, args.usd, args.source, actor(), args.by)
+    print("%s: agent cost $%.2f recorded (source: %s)" % (record["id"], record["cost"]["usd"], record["cost"]["source"]))
 
 
 def cmd_tally(args):
-    tickets = store.all_tickets()
-    counts = {}
-    for r in tickets:
-        counts[r["status"]] = counts.get(r["status"], 0) + 1
-    runs = sum(len(r["runs"]) for r in tickets)
-    seconds = sum((run.get("seconds") or 0) for r in tickets for run in r["runs"])
-    _print({"reports": len(tickets), "by_status": counts, "sandbox_runs": runs,
-            "sandbox_seconds": round(seconds, 2)})
+    t = actions.tally()
+    if args.json:
+        _print(t)
+    else:
+        print(actions.tally_text(t))
 
 
 def cmd_submit(args):
+    """Offline intake for one report file: the same parsing and screening as the agent."""
+    from .intake import fill, target_for
     text = open(args.file, encoding="utf-8").read()
     result = screen.screen(text)
-    ticket = reports.parse(text, args.reporter)
-    record = store.create(ticket.to_dict(), text, source="cli:" + args.file)
+    ticket = reports.parse(text)
+    record = store.create({}, text, source="cli")
+    fill(record, ticket)
     if result.blocked:
-        record["screen"] = result.findings
-        store.set_status(record, "quarantined", "cli", why=result.summary())
-    elif not ticket.complete():
-        store.set_status(record, "awaiting_poc", "cli", missing=ticket.missing)
+        record["screen_rules"] = sorted({f["rule"] for f in result.findings})
+        store.save_private_json(record["id"], "screen.json", result.findings)
+        target = "quarantined"
     else:
-        store.set_status(record, "in_triage", "cli")
+        target = target_for(ticket)
+    store.apply(record, "receive", "human", "cli", target=target)
     print(record["id"], record["status"])
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="proveit", description=__doc__,
+    parser = argparse.ArgumentParser(prog="python -m proveit", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("build"); p.add_argument("--force", action="store_true"); p.set_defaults(fn=cmd_build)
-    for name, fn in (("run", cmd_run), ("trace", cmd_trace)):
-        p = sub.add_parser(name)
-        p.add_argument("ticket")
-        p.add_argument("--build", choices=list(TARGET["builds"]), default="vulnerable")
-        p.add_argument("--by", default="cli")
-        p.add_argument("-v", "--verbose", action="store_true")
-        p.set_defaults(fn=fn)
-    p = sub.add_parser("check"); p.add_argument("ticket"); p.add_argument("--by", default="cli"); p.set_defaults(fn=cmd_check)
+    p = sub.add_parser("check")
+    p.add_argument("ticket")
+    p.add_argument("--build", choices=list(TARGET["builds"]), default="vulnerable")
+    p.add_argument("--loader", choices=list(ENTRY_POINTS), help="run through another allowlisted entry point")
+    p.add_argument("--by", default="cli")
+    p.set_defaults(fn=cmd_check)
+    p = sub.add_parser("evidence"); p.add_argument("ticket"); p.add_argument("--json", action="store_true"); p.set_defaults(fn=cmd_evidence)
     p = sub.add_parser("show"); p.add_argument("ticket"); p.set_defaults(fn=cmd_show)
     sub.add_parser("list").set_defaults(fn=cmd_list)
-    sub.add_parser("tally").set_defaults(fn=cmd_tally)
-    p = sub.add_parser("submit"); p.add_argument("file"); p.add_argument("--reporter", default="local"); p.set_defaults(fn=cmd_submit)
+    p = sub.add_parser("concur"); p.add_argument("ticket"); p.add_argument("--by", default="skeptic"); p.set_defaults(fn=cmd_concur)
+    p = sub.add_parser("dispute"); p.add_argument("ticket"); p.add_argument("--reason", required=True)
+    p.add_argument("--by", default="skeptic"); p.set_defaults(fn=cmd_dispute)
+    p = sub.add_parser("override"); p.add_argument("ticket"); p.add_argument("--by", required=True)
+    p.add_argument("--note"); p.set_defaults(fn=cmd_override)
+    p = sub.add_parser("cost"); p.add_argument("ticket"); p.add_argument("--usd", type=float, required=True)
+    p.add_argument("--source", required=True); p.add_argument("--by", default="maintainer"); p.set_defaults(fn=cmd_cost)
+    p = sub.add_parser("tally"); p.add_argument("--json", action="store_true"); p.set_defaults(fn=cmd_tally)
+    p = sub.add_parser("submit"); p.add_argument("file"); p.set_defaults(fn=cmd_submit)
     args = parser.parse_args(argv)
-    args.fn(args)
+    try:
+        args.fn(args)
+    except states.IllegalTransition as exc:
+        sys.exit("refused: %s" % exc)
+    except FileNotFoundError as exc:
+        sys.exit("no such ticket: %s" % exc)
 
 
 if __name__ == "__main__":

@@ -179,7 +179,7 @@ def check_agent_folders(r, sessions=None):
         here = [s for s in sessions if s["cwd"] and Path(s["cwd"]).resolve() == folder.resolve()]
         if here:
             s = here[0]
-            r.add(PASS, "the %s starts in %s" % (role, folder.relative_to(config.REPO_ROOT)), "%s session" % s["provider"])
+            r.add(PASS, "the %s starts in %s" % (role, folder.relative_to(config.REPO_ROOT).as_posix()), "%s session" % s["provider"])
             if s["mode"]:
                 r.add(WARN if s["mode"] == "auto" else PASS, "the %s's permission mode" % role,
                       "Console starts it in %r mode; see agents/README.md (\"Things to check\")" % s["mode"])

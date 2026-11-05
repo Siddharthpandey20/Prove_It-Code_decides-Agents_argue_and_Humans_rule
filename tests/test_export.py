@@ -27,7 +27,7 @@ class Export(WorkDirTest):
     def test_export_has_the_evidence_and_no_reporter_text(self):
         tid = self.ticket()
         folder = export.export(tid, self.tmp / "out")
-        names = sorted(str(p.relative_to(folder)) for p in folder.rglob("*") if p.is_file())
+        names = sorted(p.relative_to(folder).as_posix() for p in folder.rglob("*") if p.is_file())
         self.assertEqual(names, ["evidence.json", "evidence.txt", "manifest.json", "runs/01-vulnerable.json",
                                  "runs/02-patched.json", "ticket.json"])
         everything = "".join(p.read_text(encoding="utf-8") for p in folder.rglob("*") if p.is_file())

@@ -6,6 +6,7 @@ import os
 import secrets
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -71,13 +72,16 @@ def build(build_name=None, force=False, quiet=True):
         cmd = ["docker", "build", "--build-arg", "PYYAML_VERSION=%s" % spec["version"],
                "--label", "proveit.harness=%s" % harness_digest(), "-t", spec["image"], str(TARGET_DIR)]
         # Docker's output is always captured, so a failure can show its end; when not quiet it is also echoed.
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                encoding="utf-8", errors="replace")
         tail = []
+        out_encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
         try:
             for line in proc.stdout:
                 tail = (tail + [line])[-60:]
                 if not quiet:
-                    print(line, end="")
+                    # A Windows console (cp1252) cannot print every character Docker emits.
+                    print(line.encode(out_encoding, "replace").decode(out_encoding), end="")
             proc.wait(timeout=BUILD_TIMEOUT)
         except subprocess.TimeoutExpired:
             proc.kill()

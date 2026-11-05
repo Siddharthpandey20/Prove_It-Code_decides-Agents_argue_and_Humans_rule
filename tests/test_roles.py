@@ -3,6 +3,7 @@
 import io
 import os
 import unittest
+from pathlib import Path
 from contextlib import redirect_stdout
 from unittest import mock
 
@@ -145,7 +146,7 @@ class PrivateFolder(WorkDirTest):
         from proveit import config
         with mock.patch.object(config, "WORK_DIR", config.DEFAULT_WORK_DIR), mock.patch.dict(os.environ, {"PROVEIT_PRIVATE_DIR": ""}):
             self.assertEqual(store.private_root(), config.PROVEIT_HOME / "private")
-        self.assertTrue(str(config.PROVEIT_HOME).startswith(str(os.path.expanduser("~/.proveit"))))
+        self.assertEqual(config.PROVEIT_HOME.parent, Path.home() / ".proveit")
 
 
 if __name__ == "__main__":

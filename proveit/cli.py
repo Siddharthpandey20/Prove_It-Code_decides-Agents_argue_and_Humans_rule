@@ -85,8 +85,7 @@ def cmd_check(args):
                                                  run.get("entry_point"), run.get("outcome")))
     print("  - " + judge.describe(run))
     print("ticket status: %s" % record["status"])
-    for note in judge.notes(judge.facts(record, evidence.latest_run(record, "vulnerable"),
-                                        evidence.latest_run(record, "patched"))):
+    for note in evidence.pack(record)["notes"]:
         print("note: " + note)
     print("evidence: " + path)
 

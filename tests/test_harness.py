@@ -35,6 +35,17 @@ class Classify(unittest.TestCase):
         outcome, _ = harness.classify(observed(marker_created=True), {"exception_type": "MemoryError"})
         self.assertEqual(outcome, "CODE_EXECUTION")
 
+    def test_busy_timeout_is_exhaustion(self):
+        outcome, why = harness.classify(observed(timed_out=True, returncode=-9, seconds=10.0, cpu_seconds=9.7), {})
+        self.assertEqual(outcome, "RESOURCE_EXHAUSTION")
+        self.assertIn("busy on the CPU", why)
+
+    def test_idle_timeout_is_inconclusive(self):
+        # A slow or overloaded host, or a child that waits: past the wall clock but hardly working.
+        outcome, why = harness.classify(observed(timed_out=True, returncode=-9, seconds=10.0, cpu_seconds=0.4), {})
+        self.assertEqual(outcome, "INCONCLUSIVE")
+        self.assertIn("0.4 s of CPU", why)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -309,7 +309,7 @@ class Intake:
         elif target == "awaiting_poc":
             self.intake.post(messages.ask_for_proof(record["id"], ticket), thread)
         else:
-            self.intake.post(messages.accepted(record["id"]), thread)
+            self.intake.post(messages.accepted(record["id"], ticket.claim), thread)
             self.triage.post(messages.ticket_posted(record))
             if self.auto_check:
                 threading.Thread(target=self.run_auto_check, args=(record["id"],), daemon=True).start()
@@ -442,8 +442,9 @@ class Intake:
 
     def do_override(self, record, who, note, thread):
         record = actions.override(record["id"], "human", who, note)
-        self.triage.post("%s: %s overrode the dispute; the ticket is %s again and can be escalated or closed." % (
-            record["id"], who, record["status"].replace("_", " ")), thread)
+        what = "the dispute" if record["override"]["after"] == "dispute" else "the missing Skeptic review"
+        self.triage.post("%s: %s overrode %s (recorded); the ticket is %s and can be escalated or closed." % (
+            record["id"], who, what, record["status"].replace("_", " ")), thread)
 
     def do_escalate(self, record, who, note, thread):
         record = actions.decide(record["id"], "escalate", "human", who, note)

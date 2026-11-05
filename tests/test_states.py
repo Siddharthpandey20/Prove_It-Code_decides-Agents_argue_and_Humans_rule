@@ -36,6 +36,7 @@ ALLOWED = [
     ("not_reproduced", "dispute", "human", None, "disputed"),
     ("disputed", "override", "human", "reproduced", "reproduced"),
     ("disputed", "override", "human", "not_reproduced", "not_reproduced"),
+    ("reproduced", "override", "human", "reproduced", "reproduced"),  # escalate without a current concur, recorded
     ("reproduced", "escalate", "human", None, "escalated"),
     ("not_reproduced", "escalate", "human", None, "escalated"),
 ] + [(s, "close", "human", None, "closed") for s in sorted(states.OPEN)]
@@ -53,7 +54,7 @@ ILLEGAL = [
     ("quarantined", "check", "agent", "reproduced", "cannot check"),
     ("awaiting_poc", "check", "human", "reproduced", "cannot check"),
     ("disputed", "check", "agent", "reproduced", "cannot move"),        # a re-run never clears a dispute
-    ("reproduced", "override", "human", "reproduced", "cannot override"),
+    ("in_triage", "override", "human", "in_triage", "cannot override"),
     ("in_triage", "dispute", "agent", None, "cannot dispute"),
     ("in_triage", "concur", "agent", None, "cannot concur"),
     ("disputed", "concur", "agent", None, "cannot concur"),

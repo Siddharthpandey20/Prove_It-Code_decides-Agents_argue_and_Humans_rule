@@ -33,15 +33,17 @@ Finding numbers (F1 to F31) refer to the assessment.
 
 ## C. Evidence says only what it shows (F5, F6, F7, F8, F27, F28, F29)
 
-- [ ] C1 The patched comparison uses only a patched run with the same entry point and payload hash as the vulnerable run; otherwise the checklist says `patched_comparable: False` and a note explains.
-- [ ] C2 An inconclusive or invalid patched run does not count as "patched build checked"; a note says it was inconclusive.
-- [ ] C3 Skeptic verdicts and overrides record the run they refer to; a new vulnerable run marks an earlier verdict stale.
-- [ ] C4 Escalation needs a current Skeptic concur or a maintainer override (decision D-007); the refusal says which.
-- [ ] C5 `INVALID_PROOF` never becomes `not_reproduced`.
-- [ ] C6 Information-leak claims are never reported as "did not reproduce": the reporter is told the sandbox cannot decide them.
-- [ ] C7 A timeout where the child used little CPU (a slow or overloaded host) is `INCONCLUSIVE`, not `RESOURCE_EXHAUSTION`.
-- [ ] C8 Reporter messages state the patched result only when it is comparable, and never as proof of a fix when it is not.
-- [ ] C9 Tests for each of the above.
+- [x] C1 The patched comparison uses only a patched run with the same entry point and payload hash as the vulnerable run; otherwise the checklist says `patched_comparable: False` and a note explains.
+- [x] C2 An inconclusive or invalid patched run does not count as "patched build checked"; a note says it was inconclusive.
+- [x] C3 Skeptic verdicts and overrides record the run they refer to; a new vulnerable run marks an earlier verdict stale.
+- [x] C4 Escalation needs a current Skeptic concur or a maintainer override (decision D-007); the refusal says which.
+- [x] C5 `INVALID_PROOF` never becomes `not_reproduced`.
+- [x] C6 Information-leak claims are never reported as "did not reproduce": the reporter is told the sandbox cannot decide them.
+- [x] C7 A timeout where the child used little CPU (a slow or overloaded host) is `INCONCLUSIVE`, not `RESOURCE_EXHAUSTION`.
+- [x] C8 Reporter messages state the patched result only when it is comparable, and never as proof of a fix when it is not.
+- [x] C9 Tests for each of the above.
+
+  Evidence: `tests/test_evidence.py` (16 tests: loader and payload mismatch, inconclusive patched run, stale concur and override, escalation needs review, invalid and inconclusive runs, information leaks, scope line); `tests/test_harness.py` busy vs idle timeout; `tests/test_sandbox.py` `test_sleep_is_not_a_proof` now gets `INCONCLUSIVE` from the real sandbox (cpu < 5 s). 115 tests OK with Docker, rehearsal twice identical. D-007 recorded in `context.md` (group K).
 
 ## D. Only the reporter completes their report (F9)
 

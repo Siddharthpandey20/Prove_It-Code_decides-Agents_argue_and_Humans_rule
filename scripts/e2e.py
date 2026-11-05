@@ -89,6 +89,11 @@ def main():
         ids = {n: t["id"] for n, t in zip(sorted(roots), tickets)}
         mm.post(triage_ch, "@%s close %s the PoC wrote the marker itself" % (agent, ids["02"]))
         mm.post(triage_ch, "@%s close %s finished in milliseconds with 12 MB" % (agent, ids["03"]))
+        # No Skeptic agent is in these rooms, so escalation needs a recorded override (decision D-007).
+        mm.post(triage_ch, "@%s escalate %s confirmed, CVE-2020-14343" % (agent, ids["01"]))  # refused: no review
+        time.sleep(2)
+        mm.post(triage_ch, "@%s override %s headless e2e: no Skeptic agent in this room" % (agent, ids["01"]))
+        time.sleep(2)
         mm.post(triage_ch, "@%s escalate %s confirmed, CVE-2020-14343" % (agent, ids["01"]))
         mm.post(triage_ch, "@%s escalate %s" % (agent, ids["04"]))  # must be refused: quarantined
         time.sleep(6)
@@ -117,6 +122,11 @@ def main():
         else:
             failures.append("04-refusal")
             print("FAIL %s: no refusal for escalating a quarantined report" % ids["04"])
+        if any("Refused escalate for %s" % ids["01"] in m and "no current Skeptic concur" in m for m in triage_posts):
+            print("PASS %s: escalate refused before any review" % ids["01"])
+        else:
+            failures.append("01-review-refusal")
+            print("FAIL %s: escalating without a review was not refused" % ids["01"])
         if failures:
             print("\nintake log:\n" + (tmp / "intake.log").read_text()[-3000:])
             sys.exit("E2E FAILED: %s" % failures)

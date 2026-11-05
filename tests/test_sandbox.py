@@ -128,11 +128,13 @@ class AuditCheats(unittest.TestCase):
         # on the patched build the same document is refused by the library.
         sleeper = code_exec_payload("import time\ntime.sleep(60)\n")
         self.assertEqual(sandbox.run_poc("full_load", sleeper, "patched")["outcome"], "NOT_REPRODUCED")
-        # On the vulnerable build the sleep only happens because the library ran the payload,
-        # and it is reported as resource exhaustion, never as code execution.
+        # On the vulnerable build the sleep only happens because the library ran the payload. It
+        # runs past the limit without using the CPU, so it is inconclusive: never code execution,
+        # and not resource exhaustion either (an idle child proves nothing about exhaustion).
         run = sandbox.run_poc("full_load", sleeper, "vulnerable")
-        self.assertEqual(run["outcome"], "RESOURCE_EXHAUSTION", run)
+        self.assertEqual(run["outcome"], "INCONCLUSIVE", run)
         self.assertTrue(run["timed_out"])
+        self.assertLess(run["cpu_seconds"], 5)
 
     def test_ctypes_crash_is_not_a_proof(self):
         crasher = code_exec_payload("import ctypes\nctypes.string_at(0)\n")

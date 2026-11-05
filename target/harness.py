@@ -43,6 +43,10 @@ CALL_SECONDS = 10
 CALL_MEMORY_MB = 192
 # Peak memory the parent must observe before a reported MemoryError counts.
 MEMORY_EXHAUSTION_MB = CALL_MEMORY_MB // 2
+# A call that ran past the wall-clock limit counts as resource exhaustion only
+# if the child was actually working: a slow or overloaded host, or a child
+# that waits, uses little CPU and proves nothing about the library.
+BUSY_CPU_FRACTION = 0.5
 EVENT_KINDS = {"exec", "compile", "write-marker", "write-other", "os.system", "os.exec",
                "os.posix_spawn", "os.spawn", "subprocess.Popen", "socket.connect", "ctypes.dlopen"}
 CRASH_SIGNALS = {signal.SIGSEGV, signal.SIGBUS, signal.SIGABRT, signal.SIGFPE, signal.SIGILL}
@@ -163,14 +167,17 @@ def run(entry, payload_bytes):
     except OSError:
         pass
     reader.join(2)
-    peak_kb = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
+    usage = resource.getrusage(resource.RUSAGE_CHILDREN)
+    peak_kb = usage.ru_maxrss
+    cpu_seconds = usage.ru_utime + usage.ru_stime
     marker_created = os.path.exists(MARKER)
     try:
         report = json.loads(b"".join(chunks).decode("utf-8"))
     except Exception:
         report = None
     return {"returncode": child.returncode, "timed_out": timed_out, "seconds": round(elapsed, 3),
-            "peak_rss_mb": round(peak_kb / 1024.0, 1), "marker_created": marker_created, "report": report}
+            "cpu_seconds": round(cpu_seconds, 3), "peak_rss_mb": round(peak_kb / 1024.0, 1),
+            "marker_created": marker_created, "report": report}
 
 
 def classify(observed, clean):
@@ -179,7 +186,11 @@ def classify(observed, clean):
     if observed["marker_created"]:
         return "CODE_EXECUTION", "the marker file appeared, so the library ran the payload as code"
     if observed["timed_out"]:
-        return "RESOURCE_EXHAUSTION", "the library call ran past the %d s limit" % CALL_SECONDS
+        cpu = observed.get("cpu_seconds")
+        if cpu is not None and cpu < CALL_SECONDS * BUSY_CPU_FRACTION:
+            return "INCONCLUSIVE", ("the call ran past the %d s limit but used only %.1f s of CPU, so the host was slow "
+                                    "or the child was waiting: that is not evidence of exhaustion" % (CALL_SECONDS, cpu))
+        return "RESOURCE_EXHAUSTION", "the library call ran past the %d s limit, busy on the CPU" % CALL_SECONDS
     if sig in (signal.SIGKILL, signal.SIGXCPU):
         return "RESOURCE_EXHAUSTION", "the library call was killed by a resource limit (signal %d)" % sig
     if sig in CRASH_SIGNALS:
@@ -231,7 +242,7 @@ def main():
             record.update(
                 outcome=outcome, why=why, exit_code=rc if rc is not None and rc >= 0 else None,
                 signal=-rc if rc is not None and rc < 0 else None, timed_out=observed["timed_out"],
-                seconds=observed["seconds"], peak_rss_mb=observed["peak_rss_mb"],
+                seconds=observed["seconds"], cpu_seconds=observed["cpu_seconds"], peak_rss_mb=observed["peak_rss_mb"],
                 marker_created=observed["marker_created"], child_report_received=observed["report"] is not None,
                 **clean)
     except Exception as exc:  # a harness fault, never the payload's doing

@@ -7,17 +7,60 @@ TICKET_FIELDS = ("id", "status", "claim", "severity", "entry_point", "payload_sh
                  "poc_problem", "missing", "screen_rules")
 
 
-def latest_run(record, build):
+def latest_entry(record, build):
     for entry in reversed(record.get("runs", [])):
         if entry["build"] == build:
-            return store.load_run(entry["file"])
+            return entry
     return None
+
+
+def latest_run(record, build):
+    entry = latest_entry(record, build)
+    return store.load_run(entry["file"]) if entry else None
+
+
+def comparable(vulnerable, patched):
+    """A patched run compares with the vulnerable one only through the same entry point on the same payload."""
+    return bool(vulnerable and patched and vulnerable.get("entry_point") == patched.get("entry_point")
+                and vulnerable.get("payload_sha256") == patched.get("payload_sha256"))
+
+
+def patched_for(record, vulnerable):
+    """The latest patched run comparable with `vulnerable`, else the latest patched run (the checklist says which)."""
+    latest = None
+    for entry in reversed(record.get("runs", [])):
+        if entry["build"] != "patched":
+            continue
+        run = store.load_run(entry["file"])
+        if comparable(vulnerable, run):
+            return run
+        latest = latest or run
+    return latest
+
+
+def current_evidence(record):
+    """The run files a verdict or an override refers to: the latest vulnerable run and its patched comparison."""
+    vulnerable = latest_entry(record, "vulnerable")
+    patched_file = None
+    if vulnerable:
+        vuln_run = store.load_run(vulnerable["file"])
+        for entry in reversed(record.get("runs", [])):
+            if entry["build"] == "patched" and comparable(vuln_run, store.load_run(entry["file"])):
+                patched_file = entry["file"]
+                break
+    return {"vulnerable": vulnerable["file"] if vulnerable else None, "patched": patched_file}
+
+
+def is_current(review, record):
+    """True when a Skeptic verdict or an override was made on the evidence the ticket has now."""
+    return bool(review) and review.get("evidence") == current_evidence(record)
 
 
 def pack(record):
     vulnerable = latest_run(record, "vulnerable")
-    patched = latest_run(record, "patched")
+    patched = patched_for(record, vulnerable)
     facts = judge.facts(record, vulnerable, patched)
+    facts["skeptic_verdict_current"] = None if not record.get("skeptic") else is_current(record["skeptic"], record)
     return {
         "ticket": {k: record.get(k) for k in TICKET_FIELDS if k in record},
         "target": {name: spec["version"] for name, spec in TARGET["builds"].items()},
@@ -26,9 +69,9 @@ def pack(record):
         "runs": [{"build": r["build"], "file": r["file"], "outcome": r.get("outcome"), "by": r.get("by")}
                  for r in record.get("runs", [])],
         "checklist": facts,
-        "notes": judge.notes(facts),
+        "notes": judge.notes(facts, vulnerable, patched),
         "skeptic": record.get("skeptic"),
-        "override": record.get("override"),
+        "override": dict(record["override"], current=is_current(record["override"], record)) if record.get("override") else None,
     }
 
 
@@ -52,7 +95,9 @@ def text(p):
         lines.append("note: " + note)
     if p.get("skeptic"):
         s = p["skeptic"]
-        lines.append("skeptic: %s by %s%s" % (s["verdict"], s["by"], (": " + s["reason"]) if s.get("reason") else ""))
+        stale = "" if p["checklist"].get("skeptic_verdict_current") else " (STALE: made on earlier evidence; review again)"
+        lines.append("skeptic: %s by %s%s%s" % (s["verdict"], s["by"], (": " + s["reason"]) if s.get("reason") else "", stale))
     if p.get("override"):
-        lines.append("override by %s" % p["override"]["by"])
+        o = p["override"]
+        lines.append("override by %s%s" % (o["by"], "" if o.get("current") else " (made on earlier evidence)"))
     return "\n".join(lines)

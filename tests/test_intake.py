@@ -193,6 +193,8 @@ class ReporterMessages(WorkDirTest):
                 actions.check(tid, actor="agent", by="reproducer")
                 if patched:
                     actions.check(tid, "patched", actor="agent", by="reproducer")
+            if verdict == "escalate":
+                self.say(agent, "@prove-it-intake concur %s" % tid, sender="prove-it-skeptic", kind="agent")
         self.say(agent, "@prove-it-intake %s %s note from maintainer" % (verdict, tid))
         return agent.intake.posts[-1][0], store.load(tid)
 
@@ -200,7 +202,7 @@ class ReporterMessages(WorkDirTest):
         text, record = self.decided(["CODE_EXECUTION", "NOT_REPRODUCED"], "escalate", patched=True)
         self.assertEqual(record["status"], "escalated")
         self.assertIn("It reproduced in the sandbox: CODE_EXECUTION", text)
-        self.assertIn("patched PyYAML 5.4 the outcome was NOT_REPRODUCED", text)
+        self.assertIn("On the patched PyYAML 5.4, through the same entry point on the same payload, the outcome was NOT_REPRODUCED", text)
 
     def test_escalated_not_reproduced(self):
         text, record = self.decided(["NOT_REPRODUCED"], "escalate")

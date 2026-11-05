@@ -35,7 +35,9 @@ def export(ticket_id, out=None):
     pack = evidence.pack(record)
 
     def write(name, text):
-        (folder / name).write_text(text, encoding="utf-8")
+        # Always LF, so the hashes in the manifest hold on every OS and after Git normalizes line endings.
+        with open(str(folder / name), "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
 
     write("ticket.json", json.dumps(record, indent=2, sort_keys=True))
     for entry in record.get("runs", []):

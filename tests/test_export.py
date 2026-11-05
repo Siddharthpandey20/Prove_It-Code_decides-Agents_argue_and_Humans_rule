@@ -37,6 +37,13 @@ class Export(WorkDirTest):
         self.assertEqual(manifest["payload_sha256"], store.load(tid)["payload_sha256"])
         self.assertEqual(export.verify(folder), [])
 
+    def test_files_use_lf_so_the_manifest_survives_git(self):
+        # Git stores these files with LF (.gitattributes); CRLF on Windows would break every hash once committed.
+        folder = export.export(self.ticket(), self.tmp / "out")
+        for path in folder.rglob("*"):
+            if path.is_file():
+                self.assertNotIn(b"\r\n", path.read_bytes(), path.name)
+
     def test_verify_catches_changes_additions_and_removals(self):
         tid = self.ticket()
         folder = export.export(tid, self.tmp / "out")

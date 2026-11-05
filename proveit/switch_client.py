@@ -9,13 +9,47 @@ reply can be posted into the right room and thread with `post_message`.
 
 import json
 import logging
+import os
 import threading
 import time
 import urllib.error
 import urllib.request
 import uuid
+from pathlib import Path
 
 log = logging.getLogger("proveit.switch")
+
+
+class CursorStore:
+    """The last event handled per room, saved so a restarted agent resumes where it stopped.
+
+    Without it a new process starts at the head of the stream and never sees
+    the messages posted while it was down.
+    """
+
+    def __init__(self, path=None):
+        self.path = Path(path) if path else None
+        self.lock = threading.Lock()
+        self.values = {}
+        if self.path and self.path.exists():
+            try:
+                self.values = json.loads(self.path.read_text(encoding="utf-8"))
+            except ValueError:
+                log.warning("ignoring unreadable cursor file %s", self.path)
+
+    def get(self, room_id):
+        return self.values.get(room_id)
+
+    def set(self, room_id, sequence):
+        with self.lock:
+            if self.values.get(room_id) is not None and sequence <= self.values[room_id]:
+                return
+            self.values[room_id] = sequence
+            if self.path:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                tmp = self.path.with_name(self.path.name + ".%d.tmp" % threading.get_ident())
+                tmp.write_text(json.dumps(self.values, indent=2, sort_keys=True), encoding="utf-8")
+                os.replace(str(tmp), str(self.path))
 
 
 class SwitchError(RuntimeError):
@@ -110,8 +144,8 @@ class Agent:
                                       "target_room_id": target_room_id, "label": label})
 
     # --- connections ------------------------------------------------------
-    def connect(self, room_id, on_event):
-        conn = Connection(self, room_id, on_event)
+    def connect(self, room_id, on_event, cursors=None, failed_log=None):
+        conn = Connection(self, room_id, on_event, cursors=cursors, failed_log=failed_log)
         conn.start()
         return conn
 
@@ -122,12 +156,16 @@ class Agent:
 class Connection:
     """One SSE stream bound to one room, with its heartbeat."""
 
-    def __init__(self, agent, room_id, on_event):
+    ATTEMPTS = 3  # a handler that fails this many times is logged and skipped, so one bad event cannot block a room
+
+    def __init__(self, agent, room_id, on_event, cursors=None, failed_log=None):
         self.agent = agent
         self.room_id = room_id
         self.on_event = on_event
         self.id = str(uuid.uuid4())  # kept across reconnects, per the protocol
-        self.last_sequence = None
+        self.cursors = cursors or CursorStore()
+        self.failed_log = Path(failed_log) if failed_log else None
+        self.last_sequence = self.cursors.get(room_id)  # resume after a restart
         self.ready = threading.Event()
 
     def start(self):
@@ -149,13 +187,17 @@ class Connection:
             url += "&start_from=head"
         return url
 
+    def _stream_headers(self):
+        headers = self.agent._headers()
+        headers["Accept"] = "text/event-stream"
+        if self.last_sequence is not None:
+            headers["Last-Event-ID"] = str(self.last_sequence)  # resume after the last event handled
+        return headers
+
     def _stream_forever(self):
         backoff = 1
         while not self.agent._stop.is_set():
-            headers = self.agent._headers()
-            headers["Accept"] = "text/event-stream"
-            if self.last_sequence is not None:
-                headers["Last-Event-ID"] = str(self.last_sequence)
+            headers = self._stream_headers()
             try:
                 req = urllib.request.Request(self._url(), headers=headers)
                 with urllib.request.urlopen(req, timeout=90) as stream:
@@ -187,26 +229,53 @@ class Connection:
             elif field == "id":
                 event_id = value
 
+    def _advance(self, event_id):
+        if event_id is not None:
+            self.last_sequence = int(event_id)
+            self.cursors.set(self.room_id, self.last_sequence)
+
     def _dispatch(self, event_type, data, event_id):
+        """Handle one event, and only then move the cursor past it."""
         try:
             frame = json.loads(data)
         except ValueError:
+            self._advance(event_id)
             return
-        if event_id is not None:
-            self.last_sequence = int(event_id)
         if event_type == "connection_state":
             self.ready.set()
             return
         if event_type == "evicted":
             log.warning("connection for room %s evicted: %s", self.room_id[:8], frame.get("reason"))
             return
-        if event_type in ("gap", "subscription_changed", "room_released"):
-            log.info("%s on room %s: %s", event_type, self.room_id[:8], frame)
+        if event_type == "gap":
+            log.warning("gap on room %s: some events are no longer available: %s", self.room_id[:8], frame)
+            self._advance(event_id)
             return
-        try:
-            self.on_event(self, event_type, frame)
-        except Exception:
-            log.exception("handler failed for %s", event_type)
+        if event_type in ("subscription_changed", "room_released"):
+            log.info("%s on room %s: %s", event_type, self.room_id[:8], frame)
+            self._advance(event_id)
+            return
+        for attempt in range(1, self.ATTEMPTS + 1):
+            try:
+                self.on_event(self, event_type, frame)
+                break
+            except Exception as exc:
+                log.exception("handler failed for %s (attempt %d of %d)", event_type, attempt, self.ATTEMPTS)
+                if attempt == self.ATTEMPTS:
+                    self._record_failure(event_type, event_id, frame, exc)
+                else:
+                    time.sleep(0.5 * attempt)
+        self._advance(event_id)
+
+    def _record_failure(self, event_type, event_id, frame, exc):
+        """Keep an event that could not be handled, for a maintainer to look at (it may hold reporter text)."""
+        if not self.failed_log:
+            return
+        self.failed_log.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.failed_log, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps({"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "room": self.room_id,
+                                     "event_id": event_id, "type": event_type, "error": type(exc).__name__,
+                                     "frame": frame}) + "\n")
 
     def _beat_forever(self):
         url = "%s/agents/%s/connection/beat" % (self.agent.api, self.agent.id)

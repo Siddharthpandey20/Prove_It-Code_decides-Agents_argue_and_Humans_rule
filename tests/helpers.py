@@ -57,8 +57,10 @@ class WorkDirTest(unittest.TestCase):
                                                             "thread_id": root, "sender_name": sender,
                                                             "sender_kind": "user"}})
 
-    def say(self, agent, text, sender="maintainer", kind="user"):
-        payload = {"body": text, "message_id": "t", "thread_id": None, "sender_name": sender, "sender_kind": kind}
+    def say(self, agent, text, sender="maintainer", kind="user", message_id=None):
+        self._n = getattr(self, "_n", 0) + 1
+        payload = {"body": text, "message_id": message_id or "t%d" % self._n, "thread_id": None, "sender_name": sender,
+                   "sender_kind": kind}
         if kind == "agent":
             payload["sender"] = "@switch-agent-" + sender
         agent.on_triage_event(None, "message", {"payload": payload})

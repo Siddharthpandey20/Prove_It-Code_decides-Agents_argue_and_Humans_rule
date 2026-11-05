@@ -19,6 +19,7 @@ messages) is the real code.
 
 import argparse
 import hashlib
+import itertools
 import json
 import os
 import subprocess
@@ -69,10 +70,12 @@ def rehearse(work):
             "body": text, "message_id": mid, "thread_id": thread, "sender_name": "replay-reporter", "sender_kind": "user"}})
         return mid
 
+    said = itertools.count(1)
+
     def maintainer(text, who="maintainer"):
         print("  [%s in #proveit-triage] %s" % (who, text))
         intake.on_triage_event(None, "message", {"payload": {
-            "body": text, "message_id": "t", "thread_id": None, "sender_name": who, "sender_kind": "user"}})
+            "body": text, "message_id": "t-%d" % next(said), "thread_id": None, "sender_name": who, "sender_kind": "user"}})
 
     def skeptic(tid):
         """Scripted stand-in for the Skeptic: dispute if the checklist raises any note, else concur.

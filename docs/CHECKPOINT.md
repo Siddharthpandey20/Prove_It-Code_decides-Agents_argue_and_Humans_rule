@@ -55,11 +55,13 @@ Finding numbers (F1 to F31) refer to the assessment.
 
 ## E. Intake does not lose or repeat work (F21, F22, F23, F24)
 
-- [ ] E1 The event cursor per room is saved in `.proveit/` and resumed after a restart; reports posted while Intake was down are processed.
-- [ ] E2 The cursor advances only after the handler succeeded.
-- [ ] E3 The same message delivered twice creates one ticket (dedupe on message id).
-- [ ] E4 If telling the reporter fails, the ticket records `notified: false`, triage gets a warning, and `@prove-it-intake notify R-001` resends.
-- [ ] E5 Tests for each.
+- [x] E1 The event cursor per room is saved next to Intake's state (`~/.proveit/<checkout>/cursors-<agent>.json`) and resumed after a restart; reports posted while Intake was down are processed.
+- [x] E2 The cursor advances only after the handler succeeded.
+- [x] E3 The same message delivered twice creates one ticket (dedupe on message id).
+- [x] E4 If telling the reporter fails, the ticket records `notified: false`, triage gets a warning, and `@prove-it-intake notify R-001` resends.
+- [x] E5 Tests for each.
+
+  Evidence: `tests/test_reliability.py` (cursor saved and resumed with `Last-Event-ID` and no `start_from=head`; cursor moves only after the handler, retried 3 times, then the event is kept in `failed-events.jsonl` and skipped; never goes backwards; duplicate report and duplicate command act once, also across a restart; a retry after a part-way failure does not duplicate the ticket; a failed notification is recorded, warned about and resent with `notify`, keeping the maintainer's note). 135 tests OK with Docker.
 
 ## F. Safe concurrent writes (F25)
 

@@ -30,14 +30,14 @@ from pathlib import Path
 
 from . import actions, evidence, messages, reports, screen, states, store
 from .config import LEGACY_STATE_DIR, PROVEIT_HOME
-from .switch_client import Agent, SwitchError, open_to_everyone, register_agent
+from .switch_client import Agent, CursorStore, SwitchError, open_to_everyone, register_agent
 
 log = logging.getLogger("proveit.intake")
 STATE_FILE = Path(os.environ.get("PROVEIT_STATE") or PROVEIT_HOME / "intake.json")
 LEGACY_STATE_FILE = LEGACY_STATE_DIR / "intake.json"
 TRIAGE_LINK_LABEL = "triage"
 # Decisions only the maintainers listed in the state file may make.
-HUMAN_ONLY = ("escalate", "close", "release", "override")
+HUMAN_ONLY = ("escalate", "close", "release", "override", "notify")
 # Verdicts only the Skeptic agent (or a maintainer) may record.
 VERDICTS = ("concur", "dispute")
 
@@ -200,13 +200,55 @@ def target_for(ticket):
     return "in_triage"
 
 
+class Handled:
+    """Message ids Intake has already handled, so a message delivered twice is acted on once."""
+
+    KEEP = 5000
+
+    def __init__(self, path=None):
+        self.path = Path(path) if path else None
+        self.lock = threading.Lock()
+        self.ids = []
+        if self.path and self.path.exists():
+            try:
+                self.ids = json.loads(self.path.read_text(encoding="utf-8"))
+            except ValueError:
+                log.warning("ignoring unreadable %s", self.path)
+        self.set = set(self.ids)
+
+    def __contains__(self, message_id):
+        return message_id in self.set
+
+    def add(self, message_id):
+        if not message_id or message_id in self.set:
+            return
+        with self.lock:
+            self.ids.append(message_id)
+            self.set.add(message_id)
+            if len(self.ids) > self.KEEP:
+                dropped = self.ids[:-self.KEEP]
+                self.ids = self.ids[-self.KEEP:]
+                self.set.difference_update(dropped)
+            if self.path:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                tmp = self.path.with_name(self.path.name + ".tmp")
+                tmp.write_text(json.dumps(self.ids), encoding="utf-8")
+                os.replace(str(tmp), str(self.path))
+
+
 class Intake:
-    VERBS = "escalate|close|release|override|concur|dispute|evidence|status|tally"
+    VERBS = "escalate|close|release|override|notify|concur|dispute|evidence|status|tally"
     # A command is the text right after the @mention: "@prove-it-intake dispute R-001 patched build not checked".
     COMMAND = re.compile(r"[\s:,]*(%s)\b\s*(R-\d{3,})?\s*(.*)" % VERBS, re.I | re.S)
 
-    def __init__(self, state, auto_check=False, source="switch"):
+    def __init__(self, state, auto_check=False, source="switch", state_dir=None):
         self.state = state
+        # Saved next to the state file when running for real; in memory for tests and the rehearsal.
+        self.state_dir = Path(state_dir) if state_dir else None
+        key = state.get("agent_id", "local")
+        self.handled = Handled(self.state_dir / ("handled-%s.json" % key) if self.state_dir else None)
+        self.cursors = CursorStore(self.state_dir / ("cursors-%s.json" % key) if self.state_dir else None)
+        self.failed_log = self.state_dir / "failed-events.jsonl" if self.state_dir else None
         self.agent = Agent(state["api_url"], state["agent_id"], state["api_key"]) if state.get("api_url") else None
         self.auto_check = auto_check
         self.source = source
@@ -251,7 +293,7 @@ class Intake:
         if not intake_id:
             sys.exit("Room %s not found or %s is not in it. Deploy switch/prove-it.template.yaml in Switch Console, "
                      "or run setup with --create-rooms." % (self.state["intake_room"], self.state["agent_name"]))
-        self.intake = self.agent.connect(intake_id, self.on_intake_event)
+        self.intake = self.agent.connect(intake_id, self.on_intake_event, cursors=self.cursors, failed_log=self.failed_log)
         if not self.intake.ready.wait(20):
             sys.exit("Could not open the event stream for room %s" % intake_id)
         # The triage room is wherever the intake room's Switch link labelled "triage" points.
@@ -260,7 +302,7 @@ class Intake:
             sys.exit("#%s has no Switch room link labelled %r, so Intake does not know where to send tickets. "
                      "Deploy switch/prove-it.template.yaml (it creates the link) or run setup with --create-rooms."
                      % (self.state["intake_room"], TRIAGE_LINK_LABEL))
-        self.triage = self.agent.connect(triage_id, self.on_triage_event)
+        self.triage = self.agent.connect(triage_id, self.on_triage_event, cursors=self.cursors, failed_log=self.failed_log)
         if not self.triage.ready.wait(20):
             sys.exit("Could not open the event stream for room %s" % triage_id)
         log.info("Intake is listening in #%s and the room it links to as %r", self.state["intake_room"], TRIAGE_LINK_LABEL)
@@ -273,16 +315,25 @@ class Intake:
         if self.is_self(payload) or self.is_system(payload) or not payload.get("body", "").strip():
             return
         with self.lock:
+            if payload.get("message_id") in self.handled:
+                log.info("message %s already handled; ignoring the repeat", payload.get("message_id"))
+                return
             thread = payload.get("thread_id")
             if thread and thread != payload["message_id"]:
                 record = store.find_by_thread(thread)
                 if record:
                     self.followup(record, payload)
-                return
+                self.handled.add(payload.get("message_id"))
+                return  # a reply in a thread that is not a report is ignored
             self.new_report(payload)
+            self.handled.add(payload.get("message_id"))
 
     def new_report(self, payload):
         text, thread = payload["body"], payload["message_id"]
+        if store.find_by_thread(thread):
+            # A retry after a failure part-way through: the ticket exists already.
+            log.info("report %s already has a ticket; not creating another", thread)
+            return
         result = screen.screen(text)
         ticket = reports.parse(text)
         record = store.create({}, text, source=self.source)
@@ -378,7 +429,11 @@ class Intake:
         body = payload.get("body", "")
         if not any(("@" + n) in body for n in self.names):
             return
+        if payload.get("message_id") in self.handled:
+            log.info("message %s already handled; ignoring the repeat", payload.get("message_id"))
+            return
         self.handle_command(payload)
+        self.handled.add(payload.get("message_id"))
 
     def parse_command(self, body):
         """The command after any line's @mention of Intake, or None."""
@@ -400,7 +455,7 @@ class Intake:
         with self.lock:
             if not match:
                 self.triage.post("Commands: `escalate R-001 [note]`, `close R-001 <reason>`, `override R-001 [note]`, "
-                                 "`release R-001`, `evidence R-001`, `status`, `tally`; "
+                                 "`release R-001`, `notify R-001`, `evidence R-001`, `status`, `tally`; "
                                  "from the Skeptic: `concur R-001`, `dispute R-001 <reason>`.", thread)
                 return
             verb, ticket_id, rest = match.group(1).lower(), match.group(2), match.group(3).strip()
@@ -480,12 +535,45 @@ class Intake:
     def do_escalate(self, record, who, note, thread):
         record = actions.decide(record["id"], "escalate", "human", who, note)
         self.triage.post("%s escalated by %s. Telling the reporter." % (record["id"], who), thread)
-        self.intake.post(messages.decision(record, actions.clean_reason(note)), self.reporter_thread(record))
+        self.tell_reporter(record["id"], actions.clean_reason(note), thread)
 
     def do_close(self, record, who, note, thread):
         record = actions.decide(record["id"], "close", "human", who, note)
         self.triage.post("%s closed by %s. Telling the reporter." % (record["id"], who), thread)
-        self.intake.post(messages.decision(record, actions.clean_reason(note)), self.reporter_thread(record))
+        self.tell_reporter(record["id"], actions.clean_reason(note), thread)
+
+    def tell_reporter(self, ticket_id, note, thread):
+        """Post the decision in the reporter's thread and record whether it arrived.
+
+        The decision is saved first; if the post fails, the ticket says so and a
+        maintainer can resend it with `notify`, instead of the reporter never hearing.
+        """
+        with store.ticket_lock(ticket_id):
+            record = store.load(ticket_id)
+            if note:
+                record["decision_note"] = note
+            try:
+                self.intake.post(messages.decision(record, record.get("decision_note", "")), self.reporter_thread(record))
+            except Exception as exc:
+                record["notified"] = False
+                store.event(record, "notify_failed", "intake", error=type(exc).__name__)
+                store.save(record)
+                log.exception("could not tell the reporter about %s", ticket_id)
+                self.triage.post("%s: the decision is recorded, but telling the reporter failed (%s). Resend it with "
+                                 "`%s notify %s`." % (ticket_id, type(exc).__name__, self.mention(), ticket_id), thread)
+                return False
+            record["notified"] = True
+            store.event(record, "notified", "intake")
+            store.save(record)
+            return True
+
+    def do_notify(self, record, who, note, thread):
+        if record["status"] not in states.TERMINAL:
+            raise states.IllegalTransition("%s has no decision to send yet; it is %s" % (
+                record["id"], record["status"].replace("_", " ")))
+        again = record.get("notified") is True
+        if self.tell_reporter(record["id"], "", thread):
+            self.triage.post("%s: the decision was sent to the reporter%s." % (record["id"], " again" if again else ""), thread)
 
     @staticmethod
     def status_text():
@@ -521,7 +609,7 @@ def cmd_run(args):
         if not sandbox.docker_available():
             sys.exit("--auto-check needs Docker running")
         sandbox.build()
-    intake = Intake(state, auto_check=args.auto_check)
+    intake = Intake(state, auto_check=args.auto_check, state_dir=STATE_FILE.parent)
     intake.start()
     try:
         threading.Event().wait()

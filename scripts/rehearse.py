@@ -138,6 +138,13 @@ def rehearse(work):
     print("\n== 5. Tally")
     proveit(["tally"], work, agent=False)
 
+    print("\n-- the advisory pack written when R-001 was escalated (DRAFT)")
+    pack = work / "R-001" / "advisory"
+    osv = json.loads((pack / "osv-draft.json").read_text(encoding="utf-8"))
+    print("  %s: id %s, aliases %s, affected versions %s, not reproduced on %s" % (
+        ", ".join(sorted(p.name for p in pack.glob("*"))), osv["id"], osv.get("aliases", []),
+        osv["affected"][0]["versions"], osv["database_specific"].get("not_reproduced_on", [])))
+
     outcomes = []
     for record in store.all_tickets():
         runs = {r["build"]: r.get("outcome") for r in record.get("runs", [])}
@@ -148,6 +155,7 @@ def rehearse(work):
                          "skeptic": (record.get("skeptic") or {}).get("verdict"),
                          "dispute_code": (record.get("skeptic") or {}).get("code"),
                          "question": record.get("decision_question"),
+                         "advisory": sorted(p.name for p in (work / record["id"] / "advisory").glob("*")),
                          "overridden": bool(record.get("override"))})
     return outcomes
 

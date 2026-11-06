@@ -170,6 +170,12 @@ def decision(record, note=""):
     return "\n\n".join(lines)
 
 
+def advisory_note(ticket_id):
+    """Triage only: where the advisory pack was written (decision D-017)."""
+    return ("Advisory pack for %s (DRAFT, needs maintainer review): work/%s/advisory/ osv-draft.json, "
+            "ghsa-draft.md, timeline.md" % (ticket_id, ticket_id))
+
+
 def dispute_recorded(record):
     """Triage only: the dispute, its code, what it means, and the Skeptic's internal note."""
     skeptic = record["skeptic"]

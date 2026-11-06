@@ -250,6 +250,12 @@ def _decide(ticket_id, verdict, actor, by, note="", reason=None):
     if verdict == "close":
         record["decision_question"] = question_code
         store.save(record)
+    if verdict == "escalate":
+        # Only a successful escalate writes the advisory pack (decision D-017); a refusal raised above.
+        from . import advisory
+        advisory.write(record)
+        record["advisory"] = advisory.display_path(ticket_id)
+        store.save(record)
     return record
 
 

@@ -188,6 +188,18 @@ One table in [proveit/states.py](proveit/states.py) is enforced by every command
 
 `python -m proveit tally` (or `@prove-it-intake tally`) prints counts by status and by outcome, total sandbox runs and seconds, and for each report the time to decision (elapsed time from the moment it reached triage to a maintainer's decision, from recorded timestamps; it is not a measure of effort) and the agent cost if a human recorded one with `proveit cost`, otherwise `not recorded`.
 
+### The advisory pack
+
+When a maintainer's `escalate` succeeds, Intake writes `work/R-NNN/advisory/` and says so in `#proveit-triage`. Verified offline, not yet live.
+
+- `osv-draft.json`: an [OSV](https://ossf.github.io/osv-schema/) record. Its ID is a placeholder, `x_DRAFT-PROVEIT-R-NNN` (`x_` is OSV's prefix for local databases), never a real OSV, GHSA or CVE ID. It lists only the exact version the sandbox saw reproduce and claims no fixed version. The reporter's own wording of the version goes in `database_specific`.
+- `ghsa-draft.md`: a GitHub Security Advisory draft.
+- `timeline.md` and `timeline.json`: every recorded step with its UTC timestamp, and the missing steps named as missing.
+
+Every file is marked "DRAFT, needs maintainer review". None contains reporter prose or the payload: the payload is named by its SHA-256, size and known tags. A CVE alias appears only if the maintainer's escalate note contains one. The export includes the pack in its manifest.
+
+A timestamped trail like this can help a manufacturer meet the EU Cyber Resilience Act's reporting duties. From 11 September 2026, a manufacturer must send "an early warning notification of an actively exploited vulnerability, without undue delay and in any event within 24 hours of the manufacturer becoming aware of it" ([Regulation (EU) 2024/2847, Art. 14(2)(a); Art. 71 sets the date](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32024R2847); summarised by [ECIJA](https://www.ecija.com/en/news-and-insights/cyber-resilience-act-obligations-to-report-vulnerabilities-and-incidents-from-september-2026/)). Prove It does not send anything to ENISA or a CSIRT, and a draft is not a notification. This is not legal advice.
+
 ## Verification status
 
 | What | Status | Evidence |

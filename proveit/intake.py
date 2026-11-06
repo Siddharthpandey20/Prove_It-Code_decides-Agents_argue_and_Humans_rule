@@ -553,6 +553,7 @@ class Intake:
         record = actions.decide(record["id"], "escalate", "human", who, note)
         self.triage.post("%s escalated by %s. Telling the reporter." % (record["id"], who), thread)
         self.tell_reporter(record["id"], actions.clean_reason(note), thread)
+        self.triage.post(messages.advisory_note(record["id"]), thread)
 
     CLOSE_REASON = re.compile(r"^reason=(\S*)\s*(.*)$", re.I | re.S)
 

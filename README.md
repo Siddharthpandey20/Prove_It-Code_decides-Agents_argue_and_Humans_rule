@@ -64,6 +64,8 @@ The child's own report (exception type, PyYAML call stacks) is untrusted: the pa
 | 03 "Billion laughs" in `safe_load` (synthetic slop) | `NOT_REPRODUCED` (finishes in well under a second) | not run | closed |
 | 04 Instructions to AI reviewers hidden in an HTML comment | not run: quarantined | not run | quarantined; escalation refused |
 
+The rehearsal has no Switch server, so Intake's own screen quarantines replay 04. In Switch with Trust configured, 04 is blocked before it enters the room, so no ticket is created and the tally counts three reports.
+
 ## Why Switch is the heart of it
 
 Remove Switch and the workflow has no shared rooms for the reporter, the maintainers and two agents from different vendors, no way for those agents to be told who may instruct them, and no thread to answer the reporter in. This table lists only the Switch features the code and template actually use.
@@ -79,14 +81,23 @@ Remove Switch and the workflow has no shared rooms for the reporter, the maintai
 | `auto_approve: false` | The template keeps "Bypass permissions" off for both agents | template |
 | Room instructions and a room document | The triage flow and the `verdict-rules` document live in the triage room | template |
 | Template | One YAML creates both agents, both rooms (as a group), the link, the instructions, the document and the kickoff | [switch/prove-it.template.yaml](switch/prove-it.template.yaml) |
+| **Switch Trust guardrails** | The first wall: Switch checks each human message against our policy before it enters a room. It blocks replay 04 before Intake or any agent receives it, and lets every real report, proof and command through unchanged | Console server settings, [SETUP §5](docs/SETUP.md#5-turn-on-switch-trust), [evidence](docs/evidence/live-trust-2026-11-06-windows.log) |
 
-**Not used yet, and not claimed:** Switch Trust guardrails are planned as the first wall (see below) but have not been configured by us. Room roles were removed from the template because nothing used them. `!interrupt @prove-it-reproducer` is a Switch room command we plan to show; we have not tried it yet.
+**Not used yet, and not claimed:** Room roles were removed from the template because nothing used them. `!interrupt @prove-it-reproducer` is a Switch room command we plan to show; we have not tried it yet. Trust's red-team evaluation has not been run.
 
 ## Layers against hostile reports
 
 A report is attacker-controlled text that ends up near agents that can run commands.
 
-1. **Switch Trust** (primary, once a human configures it; not configured yet): Switch checks every human message against a guardrail policy before it reaches a room. Steps are in [docs/SETUP.md](docs/SETUP.md#5-turn-on-switch-trust).
+1. **Switch Trust** (the first wall; verified live on 2026-11-06): Switch checks every human message against our guardrail policy before it enters a room. A blocked message never becomes a room message, so neither Intake nor any agent receives it. Mattermost still shows the post to people, and Switch replies in its thread: "Your message was blocked by Switch Trust". Our policy is two regex patterns with the action Block, for people's messages only. Switch's Jailbreak detector is left off: in our test it also blocked report 02's proof, because a bug report's proof describes an attack. Nothing is set to Redact, because redaction would change a payload and its SHA-256. Limits:
+   - The text of every human message goes to Switch Trust's cloud service to be checked.
+   - Messages with a file attached are not checked.
+   - If Trust cannot be reached, messages pass with a note that they were not fully checked (read from Switch's source; not tested live).
+   - The second pattern also blocks a genuine report worded like "the payload makes the app print environment variables". The reporter sees the block notice and can reword it.
+
+   Two fixed phrases are easy to reword past, like the regex screen in item 3, so the protection that holds is item 2: agents only ever see fixed fields.
+
+   Steps: [docs/SETUP.md](docs/SETUP.md#5-turn-on-switch-trust). Evidence: [docs/evidence/live-trust-2026-11-06-windows.log](docs/evidence/live-trust-2026-11-06-windows.log).
 2. **Evidence only** (the backstop): agents never receive reporter text. `ticket.json`, run records, the evidence pack, every message Intake posts to triage and every command's output contain only fixed fields: ids, allowlisted entry points, hashes, sizes, outcome classes, numbers, PyYAML function names, exception type names plus a hash of the message, and YAML tags that match known PyYAML tags (anything else shows as `unknown-tag:<hash>`). Reporter text stays in `work/<id>/private/`, which the agents are denied. A canary test checks this end to end.
 3. **The regex screen** (a fallback): Intake quarantines text written *to* AI reviewers (hidden HTML, "ignore your instructions", "print your environment", `curl ... | sh`). It is easy to paraphrase past; a test shows a paraphrased injection still never reaches an agent because of layer 2.
 4. **The sandbox**: no network, read-only filesystem, 256 MB memory, 64 processes, no Linux capabilities, non-root user, 20 s container timeout, and the payload is data.
@@ -98,7 +109,7 @@ A report is attacker-controlled text that ends up near agents that can run comma
 
 | Tool | Version | Tested with |
 | --- | --- | --- |
-| Python | 3.9 or newer, standard library only (nothing to `pip install`) | 3.13.1 (Windows 11), 3.12 (CI on Ubuntu 24.04) |
+| Python | 3.9 or newer, standard library only (nothing to `pip install`) | 3.13.3 (Windows 11), 3.12 (CI on Ubuntu 24.04) |
 | Docker | Docker Desktop or Docker Engine | Docker 29.6.2 (Docker Desktop on Windows 11), GitHub Actions `ubuntu-24.04` |
 | Switch server | 0.31.0 | 0.31.0 via `scripts/switch-server.sh` (headless) |
 | Switch Console | for the full demo | 0.40.1 on Windows 11, with its local Switch server (0.31.0) |
@@ -114,11 +125,11 @@ The sandbox image is `python:3.9-slim`, pinned by digest. Python 3.9 is end of l
 ```sh
 git clone https://github.com/akhilll0305/team-pikachu-switch-ai && cd team-pikachu-switch-ai
 python -m proveit build                      # builds proveit-target:vulnerable and :patched (needs network once)
-python -m unittest discover -s tests -v      # 74 tests, about a minute; Docker must be running
+python -m unittest discover -s tests -v      # 167 tests, about a minute; Docker must be running
 python scripts/rehearse.py --twice           # replays all four reports twice and compares
 ```
 
-Expected: the tests end with `Ran 74 tests ... OK`. If Docker is not running, the 19 sandbox tests are skipped and the output says `skipped`; that is not a pass. The 3 tests in `tests/test_agent_rules.py` check the Skeptic's Codex rules and skip only when the Codex CLI is not installed (as on CI); that skip is expected. The rehearsal ends with:
+Expected on Windows 11 (2026-11-06): `Ran 167 tests ... OK (skipped=11)`. Those 11 skips need macOS or Linux (the harness's own classification tests, POSIX file permissions, Codex's sandbox profile) and say so. If Docker is not running, the sandbox tests are skipped as well and the skip count goes up; that is not a pass. The tests in `tests/test_agent_rules.py` check the Skeptic's Codex rules and skip when the Codex CLI is not installed (as on CI); that skip is expected. The rehearsal ends with:
 
 ```
 **Tally:** 4 reports. By status: 2 closed, 1 escalated, 1 quarantined. By outcome: 1 CODE_EXECUTION, 2 NOT_REPRODUCED, 1 not run. ...
@@ -149,7 +160,7 @@ python -m proveit.intake run          # Intake listens in #proveit-intake and th
 python scripts/replay.py report 01    # post a replay as your Mattermost user
 ```
 
-The manual GUI steps are: start the server in Console, sign in Claude Code and Codex, deploy the template, trust the two agent folders, and (optional) configure Switch Trust.
+The manual GUI steps are: start the server in Console, sign in Claude Code and Codex, deploy the template, trust the two agent folders, and configure Switch Trust (sign-up, policy, API key; optional, since Intake's quarantine still works without it).
 
 ## Commands
 
@@ -190,7 +201,7 @@ One table in [proveit/states.py](proveit/states.py) is enforced by every command
 | Template | Checked against the server, deployed from Console | Accepted by Switch 0.31.0's `save_template` with no warnings, and valid against the JSON schema from its `get_template_guide`. Deployed from Switch Console 0.40.1 on 2026-11-06 (agents first, then the rooms with [the rooms-only copy](switch/prove-it.rooms.template.yaml) after a Mattermost outage; see SETUP troubleshooting) |
 | Reproducer (Claude Code) and Skeptic (Codex) working in a live room | Verified live (Windows 11, Console 0.40.1) | All four replays, every demo step: check, patched check, Skeptic review, refused escalation, override, escalate, close, quarantine, tally. [Room log](docs/evidence/live-console-2026-11-06-windows.log), [R-001 evidence](docs/evidence/live-2026-11-06-windows-R-001/) |
 | Agent lockdown files applied by Claude Code and Codex | Partly verified | Both folders trusted; in the live run the agents ran only their allowed `proveit` commands. Not yet tried: asking an agent to read `~/.proveit` or run a forbidden command. Codex's read-only profile is tested on macOS and Linux; on Windows those tests skip |
-| Switch Trust blocking fixture 04 | **Not yet configured** | |
+| Switch Trust blocking fixture 04 | Verified live (Windows 11, Console 0.40.1, 2026-11-06) | Regex-only policy: 04 blocked before the room (no ticket, Intake saw nothing); 01, 02 + proof and 03 became tickets with payload SHA-256s matching the files; every agent reply and maintainer command passed unchanged. With Jailbreak also on, report 02's proof was blocked too. [Trust log](docs/evidence/live-trust-2026-11-06-windows.log) |
 | Trust red-team eval score | **Not yet run** | |
 | Agent cost per report | **Not recorded** | `proveit cost` once a human reads Switch ROI or a provider dashboard |
 
@@ -208,6 +219,7 @@ One table in [proveit/states.py](proveit/states.py) is enforced by every command
 - The regex screen is a fallback and is easy to paraphrase past. The protection that matters is that agents only ever see fixed fields.
 - Once the library itself runs attacker code (a real bug), that code runs inside the child process. It can then make the evidence it reports noisy or make the run inconclusive, but it cannot reach the result line, and the outcome is decided by the parent from what it observes.
 - Information-leak claims are never decided automatically.
+- Switch Trust's second pattern (`print (your )?env(ironment)?`) blocks an information-leak report phrased like "makes the app print environment variables". The reporter gets the block notice and can reword it; nothing is dropped silently.
 - Agent permission rules guard the commands the agents write; they are not a boundary around every program. The boundaries are the sandbox and the evidence-only design.
 
 ## Repository map

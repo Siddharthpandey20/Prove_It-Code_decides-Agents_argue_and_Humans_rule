@@ -52,8 +52,10 @@ class Ticket:
     missing: list = field(default_factory=list)
     # A normalized version string from parse_version, never the reporter's own words.
     affected_version: str = ""
-    # The canonical name (poc.OUT_OF_SCOPE_NAMES) of an out-of-scope entry point, never the reporter's words.
+    # The canonical name (target.out_of_scope_names) of an out-of-scope entry point, never the reporter's words.
     out_of_scope_entry: str = ""
+    # Which library this proof is for (targets registry key). "" means PyYAML, the default.
+    target: str = ""
 
     def complete(self):
         return not self.missing and not self.poc_problem
@@ -85,8 +87,14 @@ def _payload_block(text):
     return body + "\n" if body.strip() else ""
 
 
-def parse(text):
-    """Build a ticket from a report. Never copies prose into the ticket."""
+def parse(text, target=None):
+    """Build a ticket from a report. Never copies prose into the ticket.
+
+    `target` picks the entry-point parser, payload fences and size limit; the
+    default is PyYAML, so existing callers and tests are unchanged.
+    """
+    from . import targets
+    target = target or targets.PYYAML
     fields = _fields(text)
     impact_text = fields.get("claimed impact") or fields.get("impact") or text
     claim = classify_claim(impact_text) or classify_claim(text)
@@ -94,17 +102,17 @@ def parse(text):
     severity = next((s for s in SEVERITIES if s in severity), "") or next(
         (s for s in SEVERITIES if re.search(r"\b%s\b" % s, text.lower())), "unrated")
 
-    python_blocks, yaml_blocks = [], []
+    python_blocks, payload_blocks = [], []
     for lang, body in FENCE.findall(text):
         lang = lang.lower()
         if lang in ("python", "py", "python3"):
             python_blocks.append(body)
-        elif lang in ("yaml", "yml", ""):
-            yaml_blocks.append(body)
+        elif lang in target.fence_langs:
+            payload_blocks.append(body)
     block = _payload_block(text)
     if block:
-        yaml_blocks.append(block)
-    payload = max(yaml_blocks, key=len) if yaml_blocks else ""
+        payload_blocks.append(block)
+    payload = max(payload_blocks, key=len) if payload_blocks else ""
     version = parse_version(fields.get("affected version"))
 
     problem = ""
@@ -113,16 +121,16 @@ def parse(text):
     if python_blocks or (payload and poc.looks_like_python(payload)):
         problem = "python_code"
     elif payload:
-        if len(payload.encode("utf-8", "surrogatepass")) > PAYLOAD_MAX_BYTES:
+        if len(payload.encode("utf-8", "surrogatepass")) > target.payload_max_bytes:
             problem = "too_large"
         if "entry point" in fields:
-            entry_point, entry_problem = poc.parse_entry_point(fields["entry point"])
+            entry_point, entry_problem = target.parse_entry_point(fields["entry point"])
             problem = problem or entry_problem or ""
             entry_point = entry_point or ""
         else:
             missing.append("entry_point")
     elif "entry point" in fields:
-        entry_point, entry_problem = poc.parse_entry_point(fields["entry point"])
+        entry_point, entry_problem = target.parse_entry_point(fields["entry point"])
         entry_point = entry_point or ""
         problem = entry_problem if entry_problem in ("unsafe_loader", "c_loader") else ""
         if not problem:
@@ -133,14 +141,18 @@ def parse(text):
         missing.append("claim")
     if not version:
         missing.append("affected_version")
-    out_of_scope = (poc.out_of_scope_name(fields.get("entry point")) or "an unsafe loader") if problem == "unsafe_loader" else ""
+    out_of_scope = (target.out_of_scope_name(fields.get("entry point")) or "an unsafe loader") if problem == "unsafe_loader" else ""
     return Ticket(claim=claim, severity=severity, entry_point=entry_point, payload=payload,
-                  poc_problem=problem, missing=missing, out_of_scope_entry=out_of_scope, affected_version=version)
+                  poc_problem=problem, missing=missing, out_of_scope_entry=out_of_scope, affected_version=version,
+                  target=target.key)
 
 
-def merge(previous, followup_text):
+def merge(previous, followup_text, target=None):
     """A reporter's follow-up in the same thread replaces the proof and fills gaps."""
-    update = parse(followup_text)
+    from . import targets
+    if target is None:
+        target = targets.get(getattr(previous, "target", "") or targets.DEFAULT_KEY)
+    update = parse(followup_text, target)
     merged = Ticket(**previous.to_dict())
     if update.payload or update.poc_problem:
         # A new proof (or a rejected one) replaces the old proof.

@@ -23,8 +23,7 @@ import re
 import tempfile
 from pathlib import Path
 
-from . import judge, reasons, store
-from .config import ENTRY_POINTS, TARGET
+from . import judge, reasons, store, targets
 from .evidence import comparable, latest_run, patched_for
 
 FOLDER = "advisory"
@@ -71,17 +70,23 @@ def facts(record):
     patched = patched_for(record, vulnerable)
     same = comparable(vulnerable, patched)
     escalated = _event(record, "escalate") or {}
+    target = targets.for_record(record)
     return {
         "id": record["id"],
+        "target_name": target.name,
+        "package": target.pypi_name,
+        "ecosystem": "PyPI",
         "claim": record.get("claim") if record.get("claim") in reasons.CLAIM_WORDS else None,
         "severity": record.get("severity") if record.get("severity") in reasons.SEVERITIES else "unrated",
-        "entry_point": record.get("entry_point") if record.get("entry_point") in ENTRY_POINTS else None,
+        "entry_point": record.get("entry_point") if record.get("entry_point") in target.entry_points else None,
+        "entry_points": target.entry_points,
+        "payload_noun": target.payload_noun,
         "payload_sha256": record.get("payload_sha256"),
         "payload_bytes": record.get("payload_bytes"),
         "tags": list(record.get("tags") or []),
         "reported_version": record.get("affected_version") or None,
-        "vulnerable_version": TARGET["builds"]["vulnerable"]["version"],
-        "patched_version": TARGET["builds"]["patched"]["version"],
+        "vulnerable_version": target.vulnerable_version,
+        "patched_version": target.patched_version,
         "vulnerable": vulnerable,
         "patched": patched if same else None,
         "patched_other": patched if patched is not None and not same else None,
@@ -96,7 +101,7 @@ def osv(f):
     reproduced = bool(vulnerable) and vulnerable.get("outcome") in judge.REPRODUCING
     claim_words = reasons.CLAIM_WORDS.get(f["claim"], "an unconfirmed issue")
     details = "Claim %s; entry point %s; vulnerable build %s %s: %s; patched build %s: %s." % (
-        f["claim"] or "unknown", f["entry_point"] or "unknown", TARGET["name"], f["vulnerable_version"],
+        f["claim"] or "unknown", f["entry_point"] or "unknown", f["target_name"], f["vulnerable_version"],
         _result(vulnerable), f["patched_version"], _result(patched))
     database = {
         "status": DRAFT,
@@ -114,10 +119,11 @@ def osv(f):
         "schema_version": OSV_SCHEMA_VERSION,
         "id": draft_id(f["id"]),
         "modified": f["escalated_at"],
-        "summary": "DRAFT: %s in PyYAML via %s (Prove It %s)" % (claim_words, f["entry_point"] or "an unknown entry point", f["id"]),
+        "summary": "DRAFT: %s in %s via %s (Prove It %s)" % (
+            claim_words, f["target_name"], f["entry_point"] or "an unknown entry point", f["id"]),
         "details": details,
         # Only versions the sandbox ran and saw reproduce; the reporter's wording is in database_specific.
-        "affected": [{"package": {"ecosystem": "PyPI", "name": "PyYAML"},
+        "affected": [{"package": {"ecosystem": f["ecosystem"], "name": f["package"]},
                       "versions": [f["vulnerable_version"]] if reproduced else []}],
         "database_specific": database,
     }
@@ -140,8 +146,9 @@ def timeline(record):
         elif what in ("check", "check_patched"):
             build = event.get("build") or ("vulnerable" if what == "check" else "patched")
             entry = next(checks[build], None) or {}
+            _target = targets.for_record(record)
             events.append({"at": event["at"], "event": "check (%s build)" % build, "detail": "%s on %s %s, %s/%s clean runs, image %s" % (
-                entry.get("outcome") or event.get("outcome"), TARGET["name"], TARGET["builds"][build]["version"],
+                entry.get("outcome") or event.get("outcome"), _target.name, _target.version(build),
                 entry.get("agreeing", 1), entry.get("container_runs", 1), entry.get("image_id") or "not recorded")})
         elif what in ("concur", "dispute"):
             events.append({"at": event["at"], "event": "Skeptic verdict",
@@ -179,15 +186,15 @@ def ghsa_md(f, record):
     claim_words = reasons.CLAIM_WORDS.get(f["claim"], "an unconfirmed issue")
     entry = f["entry_point"] or "unknown"
     lines = [DRAFT, "",
-             "# DRAFT: %s in PyYAML via %s" % (claim_words, entry), "",
+             "# DRAFT: %s in %s via %s" % (claim_words, f["target_name"], entry), "",
              "## Summary", "",
-             "A report to Prove It (%s) claims %s when an application passes untrusted YAML to `%s`. "
+             "A report to Prove It (%s) claims %s when an application passes untrusted %s to `%s`. "
              "The claimed severity is %s. This draft says only what the sandbox recorded; a maintainer must "
-             "review and complete it." % (f["id"], claim_words, ENTRY_POINTS.get(entry, entry), f["severity"]), "",
+             "review and complete it." % (f["id"], claim_words, f["payload_noun"], f["entry_points"].get(entry, entry), f["severity"]), "",
              "## Affected versions", "",
              "- Reported affected version: %s (as stated in the report, not tested as such)" % (f["reported_version"] or "not stated"),
-             "- Tested vulnerable build, PyYAML %s: %s" % (f["vulnerable_version"], _result(vulnerable)),
-             "- Patched build, PyYAML %s: %s" % (f["patched_version"], _result(patched) if patched else "not checked"),
+             "- Tested vulnerable build, %s %s: %s" % (f["target_name"], f["vulnerable_version"], _result(vulnerable)),
+             "- Patched build, %s %s: %s" % (f["target_name"], f["patched_version"], _result(patched) if patched else "not checked"),
              ]
     if other:
         lines.append("- A patched run through a different entry point or payload is not a comparison: %s" % _result(other))
@@ -197,9 +204,9 @@ def ghsa_md(f, record):
               "- Payload: not included in this draft. SHA-256 `%s`, %s bytes, known tags: %s. The payload is in %s." % (
                   f["payload_sha256"], f["payload_bytes"], ", ".join("`%s`" % t for t in f["tags"]) or "none",
                   PRIVATE_PAYLOAD % f["id"]),
-              "- Builds: PyYAML %s (vulnerable) and %s (patched), in a container with no network, a read-only file "
+              "- Builds: %s %s (vulnerable) and %s (patched), in a container with no network, a read-only file "
               "system, an unprivileged user, all capabilities dropped and fixed limits." % (
-                  f["vulnerable_version"], f["patched_version"]),
+                  f["target_name"], f["vulnerable_version"], f["patched_version"]),
               "- Each check ran the payload several times in fresh containers; n/N above is how many agreed.", "",
               "## Evidence", "",
               "| file | SHA-256 |", "| --- | --- |"]

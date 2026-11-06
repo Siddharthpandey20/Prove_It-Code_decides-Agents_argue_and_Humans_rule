@@ -19,7 +19,7 @@ import json
 import time
 from pathlib import Path
 
-from . import config, evidence, store
+from . import config, evidence, store, targets
 
 MANIFEST = "manifest.json"
 
@@ -57,7 +57,7 @@ def export(ticket_id, out=None):
     manifest = {
         "ticket": ticket_id, "generated_at": stamp, "status": record["status"],
         "payload_sha256": record.get("payload_sha256"), "entry_point": record.get("entry_point"),
-        "target": {name: spec["version"] for name, spec in config.TARGET["builds"].items()},
+        "target": {name: spec["version"] for name, spec in targets.for_record(record).builds.items()},
         "files": {name: _sha256(folder / name) for name in files},
         "note": "Fixed fields only: no reporter text and no payload. Check with: python -m proveit export --verify <folder>",
     }

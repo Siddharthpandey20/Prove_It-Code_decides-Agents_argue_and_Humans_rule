@@ -28,8 +28,8 @@ import sys
 import threading
 from pathlib import Path
 
-from . import actions, evidence, messages, reasons, reports, reputation, screen, states, store
-from .config import LEGACY_STATE_DIR, PROVEIT_HOME, TARGET, ensure_home
+from . import actions, evidence, messages, reasons, reports, reputation, screen, states, store, targets
+from .config import LEGACY_STATE_DIR, PROVEIT_HOME, ensure_home
 from .switch_client import Agent, CursorStore, SwitchError, open_to_everyone, register_agent
 
 log = logging.getLogger("proveit.intake")
@@ -184,26 +184,37 @@ def ticket_from_record(record):
                           entry_point=record.get("entry_point", ""), payload=store.payload(record["id"]),
                           poc_problem=record.get("poc_problem", ""), missing=list(record.get("missing", [])),
                           out_of_scope_entry=record.get("out_of_scope_entry", ""),
-                          affected_version=record.get("affected_version", ""))
+                          affected_version=record.get("affected_version", ""),
+                          target=record.get("target", "") or ticket_target_key(record))
 
 
-def fill(record, ticket):
-    """Copy only fixed fields from a parsed ticket into the agent-readable record."""
+def fill(record, ticket, target=None):
+    """Copy only fixed fields from a parsed ticket into the agent-readable record.
+
+    `target` (or the record's own `target`, else PyYAML) decides the out-of-scope
+    names, the tag reader and the tested version. The ticket records its target.
+    """
     from . import poc
+    target = target or targets.for_record(record)
     record.update({
+        "target": target.key,
         "claim": ticket.claim, "severity": ticket.severity, "entry_point": ticket.entry_point,
         "poc_problem": ticket.poc_problem, "missing": ticket.missing,
-        "out_of_scope_entry": ticket.out_of_scope_entry if ticket.out_of_scope_entry in poc.OUT_OF_SCOPE_NAMES else (
+        "out_of_scope_entry": ticket.out_of_scope_entry if ticket.out_of_scope_entry in target.out_of_scope_names else (
             "an unsafe loader" if ticket.out_of_scope_entry else ""),
         "payload_sha256": poc.sha256(ticket.payload) if ticket.payload else None,
         "payload_bytes": len(ticket.payload.encode("utf-8", "surrogatepass")) if ticket.payload else 0,
-        "tags": poc.tags(ticket.payload),
+        "tags": target.tags(ticket.payload),
         # Normalized by reports.parse_version; only the pinned builds are ever tested (decision D-016).
         "affected_version": reports.parse_version(ticket.affected_version),
-        "tested_version": TARGET["builds"]["vulnerable"]["version"],
+        "tested_version": target.vulnerable_version,
     })
     if ticket.payload:
         store.set_payload(record["id"], ticket.payload)
+
+
+def ticket_target_key(record):
+    return (record or {}).get("target") or targets.DEFAULT_KEY
 
 
 def target_for(ticket):

@@ -75,12 +75,18 @@ def looks_like_python(payload):
     return bool(_PY_LINE.search(payload or ""))
 
 
-def validate(entry_point, payload):
-    """Return a problem code from PROBLEMS, or None if the proof may run."""
-    if entry_point not in ENTRY_POINTS:
+def validate(entry_point, payload, entry_points=None, max_bytes=None):
+    """Return a problem code from PROBLEMS, or None if the proof may run.
+
+    `entry_points` and `max_bytes` default to PyYAML's; a target passes its own
+    (targets.Target.validate), so the same checks serve every library.
+    """
+    entry_points = ENTRY_POINTS if entry_points is None else entry_points
+    max_bytes = PAYLOAD_MAX_BYTES if max_bytes is None else max_bytes
+    if entry_point not in entry_points:
         return "unknown_entry_point" if entry_point else "no_entry_point"
     if isinstance(payload, bytes):
-        if len(payload) > PAYLOAD_MAX_BYTES:
+        if len(payload) > max_bytes:
             return "too_large"
         try:
             payload = payload.decode("utf-8")
@@ -92,7 +98,7 @@ def validate(entry_point, payload):
         size = len(payload.encode("utf-8"))
     except UnicodeEncodeError:
         return "not_utf8"
-    if size > PAYLOAD_MAX_BYTES:
+    if size > max_bytes:
         return "too_large"
     if looks_like_python(payload):
         return "python_code"

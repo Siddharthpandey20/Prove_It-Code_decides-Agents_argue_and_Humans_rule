@@ -81,10 +81,13 @@ def _patch_run_poc(items):
     runs = iter(items)
     counter = iter(range(1, 10 ** 6))
 
-    def run_poc(entry, payload, build):
+    def run_poc(entry, payload, build, target=None):
         nxt = next(runs)
         run = dict(nxt) if isinstance(nxt, dict) else fake_run(nxt, build=build, entry=entry)
         run.setdefault("container", "proveit-run-fake%06d" % next(counter))
+        if target is not None:
+            run.setdefault("target", target.key)
+            run.setdefault("target_name", target.name)
         return run
     return mock.patch("proveit.actions.sandbox.run_poc", side_effect=run_poc)
 

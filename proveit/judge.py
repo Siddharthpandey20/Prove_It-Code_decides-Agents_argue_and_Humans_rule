@@ -21,7 +21,8 @@ CLAIM_FOR_OUTCOME = {CODE_EXECUTION: "code_execution", CRASH: "crash", RESOURCE_
 SEVERITY_CEILING = {CODE_EXECUTION: "critical", CRASH: "high", RESOURCE_EXHAUSTION: "medium"}
 SEVERITY_RANK = {"low": 1, "medium": 2, "high": 3, "critical": 4}
 
-RUN_FIELDS = ("build", "target_version", "entry_point", "payload_sha256", "payload_bytes", "outcome", "why",
+RUN_FIELDS = ("build", "target", "target_name", "target_version", "entry_point", "payload_sha256", "payload_bytes",
+              "outcome", "why",
               "exit_code", "signal", "timed_out", "seconds", "cpu_seconds", "peak_rss_mb", "marker_created",
               "exception_type", "exception_sha256", "exception_frames", "dropped_values", "ran",
               "runs", "agreeing", "reproducing", "split", "image_id", "total_seconds")
@@ -29,7 +30,7 @@ RUN_FIELDS = ("build", "target_version", "entry_point", "payload_sha256", "paylo
 DETAIL_FIELDS = ("run", "container", "image_id", "outcome", "why", "seconds", "cpu_seconds", "peak_rss_mb",
                  "marker_created", "exit_code", "signal", "timed_out", "exception_type")
 # Fields that say what was run, not what was observed: the same in every run of one check.
-IDENTITY_FIELDS = ("build", "image", "target_version", "entry_point", "payload_sha256", "payload_bytes")
+IDENTITY_FIELDS = ("build", "image", "target", "target_name", "target_version", "entry_point", "payload_sha256", "payload_bytes")
 
 
 CONCLUSIVE = REPRODUCING + (NOT_REPRODUCED,)
@@ -144,8 +145,9 @@ def summary(run):
 
 def describe(run):
     """One line per check, from fixed templates."""
-    text = "%s on PyYAML %s via %s: %s" % (run.get("build"), run.get("target_version"), run.get("entry_point"),
-                                          run.get("outcome"))
+    lib = run.get("target_name", "PyYAML")
+    text = "%s on %s %s via %s: %s" % (run.get("build"), lib, run.get("target_version"), run.get("entry_point"),
+                                      run.get("outcome"))
     if "runs_detail" in run and run.get("runs"):
         text += ", %s (image %s)" % (repeats(run), short_image(run.get("image_id")))
     elif "runs_detail" not in run:
@@ -166,14 +168,15 @@ def describe(run):
 def headline(ticket_id, run):
     """The Reproducer's first line after a check: outcome, n/N clean runs and the image."""
     build = run.get("build")
+    lib = run.get("target_name", "PyYAML")
     if disagreed(run):
-        return "%s %s build: %s on PyYAML %s: %s (image %s)" % (
-            ticket_id, build, run.get("outcome"), run.get("target_version"), repeats(run), short_image(run.get("image_id")))
+        return "%s %s build: %s on %s %s: %s (image %s)" % (
+            ticket_id, build, run.get("outcome"), lib, run.get("target_version"), repeats(run), short_image(run.get("image_id")))
     if not run.get("ran"):
-        return "%s %s build: %s on PyYAML %s, not run (%s)" % (
-            ticket_id, build, run.get("outcome"), run.get("target_version"), run.get("why") or "no reason")
-    return "%s %s build: %s on PyYAML %s, %s (image %s)" % (
-        ticket_id, build, run.get("outcome"), run.get("target_version"), repeats(run), short_image(run.get("image_id")))
+        return "%s %s build: %s on %s %s, not run (%s)" % (
+            ticket_id, build, run.get("outcome"), lib, run.get("target_version"), run.get("why") or "no reason")
+    return "%s %s build: %s on %s %s, %s (image %s)" % (
+        ticket_id, build, run.get("outcome"), lib, run.get("target_version"), repeats(run), short_image(run.get("image_id")))
 
 
 def facts(record, vulnerable, patched):

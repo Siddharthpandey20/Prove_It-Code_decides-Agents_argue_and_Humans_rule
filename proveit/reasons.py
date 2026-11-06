@@ -30,7 +30,7 @@ OUTCOMES = (judge.CODE_EXECUTION, judge.CRASH, judge.RESOURCE_EXHAUSTION, judge.
 CODES = {
     "not_reproduced": (
         "did not reproduce on the vulnerable build",
-        "The sandbox did not reproduce this on PyYAML {vulnerable_version}. Which exact input and entry point "
+        "The sandbox did not reproduce this on {target_name} {vulnerable_version}. Which exact input and entry point "
         "trigger it?"),
     "not_clean_reproducible": (
         "reproduced in fewer than N/N clean runs",
@@ -40,7 +40,7 @@ CODES = {
         None),
     "out_of_scope_api": (
         "uses an API PyYAML documents as unsafe (docs/policy/pyyaml-scope.md)",
-        "This uses an API that PyYAML documents as unsafe. Can you show it with safe_load or full_load?"),
+        "This uses an API that {target_name} documents as unsafe. Can you show it with {safe_hint}?"),
     "outcome_mismatch": (
         "the outcome class does not match the claim",
         "You reported {claim_words}; the sandbox recorded {outcome}. Which input produces {claim_words}?"),
@@ -49,7 +49,7 @@ CODES = {
         "What makes this {severity} rather than lower?"),
     "version_missing": (
         "the affected version is not stated",
-        "Which PyYAML version is affected?"),
+        "Which {target_name} version is affected?"),
     "patched_not_checked": (
         "the patched build has not been checked",
         None),
@@ -74,8 +74,9 @@ def meaning(code):
     return CODES[code][0]
 
 
-def vulnerable_version():
-    return config.TARGET["builds"]["vulnerable"]["version"]
+def vulnerable_version(target=None):
+    from . import targets
+    return (target or targets.PYYAML).vulnerable_version
 
 
 def _result(run):
@@ -114,7 +115,10 @@ def question(code, record, vulnerable):
     """
     if not has_question(code):
         return None
-    values = {"vulnerable_version": vulnerable_version()}
+    from . import targets
+    target = targets.for_record(record)
+    values = {"vulnerable_version": vulnerable_version(target),
+              "target_name": target.name, "safe_hint": target.safe_hint}
     outcome = (vulnerable or {}).get("outcome")
     if outcome in OUTCOMES:
         values["outcome"] = outcome

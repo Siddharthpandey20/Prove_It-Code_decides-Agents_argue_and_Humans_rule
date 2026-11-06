@@ -6,7 +6,7 @@ wherever a command comes from.
 
 import re
 
-from . import judge, reasons, sandbox, states, store
+from . import judge, reasons, sandbox, states, store, targets
 from .evidence import current_evidence, is_current, latest_run
 
 
@@ -30,7 +30,8 @@ def check(ticket_id, build="vulnerable", actor="human", by="cli", entry_point=No
     command = "check" if build == "vulnerable" else "check_patched"
     _check_allowed(record, command, actor)
     entry = entry_point or record.get("entry_point")
-    run = sandbox.run_check(entry, store.payload(ticket_id), build)  # minutes at most; not under the lock
+    target = targets.for_record(record)
+    run = sandbox.run_check(entry, store.payload(ticket_id), build, target=target)  # minutes at most; not under the lock
     with store.ticket_lock(ticket_id):
         return _record_check(ticket_id, build, command, actor, by, run)
 

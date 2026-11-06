@@ -1,7 +1,6 @@
 """The evidence pack: everything an agent may know about a ticket, and nothing a reporter wrote."""
 
-from . import judge, store
-from .config import TARGET
+from . import judge, store, targets
 
 TICKET_FIELDS = ("id", "status", "claim", "severity", "entry_point", "payload_sha256", "payload_bytes", "tags",
                  "poc_problem", "missing", "screen_rules", "affected_version", "tested_version")
@@ -63,7 +62,7 @@ def pack(record):
     facts["skeptic_verdict_current"] = None if not record.get("skeptic") else is_current(record["skeptic"], record)
     return {
         "ticket": {k: record.get(k) for k in TICKET_FIELDS if k in record},
-        "target": {name: spec["version"] for name, spec in TARGET["builds"].items()},
+        "target": {name: spec["version"] for name, spec in targets.for_record(record).builds.items()},
         "vulnerable_run": judge.summary(vulnerable) if vulnerable else None,
         "patched_run": judge.summary(patched) if patched else None,
         "runs": [{"build": r["build"], "file": r["file"], "outcome": r.get("outcome"), "by": r.get("by"),

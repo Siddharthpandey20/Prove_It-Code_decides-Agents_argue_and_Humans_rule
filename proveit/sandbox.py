@@ -10,8 +10,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-from . import config, judge, poc
-from .config import SANDBOX_LIMITS, TARGET, TARGET_DIR, ensure_home
+from . import config, judge, poc, targets
+from .config import SANDBOX_LIMITS, ensure_home
 
 HARNESS_FILES = ("Dockerfile", "harness.py", "child.py")
 
@@ -46,19 +46,25 @@ def docker_available():
     return probe.returncode == 0 and probe.stdout.strip().lower() == "linux"
 
 
-def harness_digest():
-    """Changes whenever the image's inputs change, so stale images get rebuilt."""
+def harness_digest(target=None):
+    """Changes whenever the image's inputs change, so stale images get rebuilt.
+
+    Hashes the target's own `target_dir`; PyYAML's stays `target/`, so its
+    digest is unchanged.
+    """
+    target = target or targets.PYYAML
     digest = hashlib.sha256()
     for name in HARNESS_FILES:
-        digest.update((TARGET_DIR / name).read_bytes().replace(b"\r\n", b"\n"))
+        digest.update((target.target_dir / name).read_bytes().replace(b"\r\n", b"\n"))
     return digest.hexdigest()[:16]
 
 
-def image_current(image):
+def image_current(image, target=None):
+    target = target or targets.PYYAML
     probe = _docker(["docker", "image", "inspect", "--format",
                      '{{ index .Config.Labels "proveit.harness" }}', image], PROBE_TIMEOUT,
                     capture_output=True, text=True)
-    return probe.returncode == 0 and probe.stdout.strip() == harness_digest()
+    return probe.returncode == 0 and probe.stdout.strip() == harness_digest(target)
 
 
 def image_id(image):
@@ -75,16 +81,17 @@ def _last_line(text):
     return lines[-1][:300] if lines else "no output from Docker"
 
 
-def build(build_name=None, force=False, quiet=True):
+def build(build_name=None, force=False, quiet=True, target=None):
     """Build the target images. Needs network once; runs never do."""
-    names = [build_name] if build_name else list(TARGET["builds"])
+    target = target or targets.PYYAML
+    names = [build_name] if build_name else list(target.builds)
     built = []
     for name in names:
-        spec = TARGET["builds"][name]
-        if image_current(spec["image"]) and not force:
+        spec = target.builds[name]
+        if image_current(spec["image"], target) and not force:
             continue
-        cmd = ["docker", "build", "--build-arg", "PYYAML_VERSION=%s" % spec["version"],
-               "--label", "proveit.harness=%s" % harness_digest(), "-t", spec["image"], str(TARGET_DIR)]
+        cmd = ["docker", "build", "--build-arg", "%s=%s" % (target.build_arg, spec["version"]),
+               "--label", "proveit.harness=%s" % harness_digest(target), "-t", spec["image"], str(target.target_dir)]
         # Docker's output is always captured, so a failure can show its end; when not quiet it is also echoed.
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                 encoding="utf-8", errors="replace")
@@ -179,26 +186,32 @@ def _execute(cmd, stdin_text, name):
         raise SandboxError("could not start docker: %s" % exc) from None
 
 
-def invalid_record(entry_point, payload, build_name, why):
+def invalid_record(entry_point, payload, build_name, why, target=None):
+    target = target or targets.PYYAML
     data = payload.encode("utf-8", "surrogatepass") if isinstance(payload, str) else (payload or b"")
-    spec = TARGET["builds"][build_name]
+    spec = target.builds[build_name]
     return {"outcome": "INVALID_PROOF", "why": why, "build": build_name, "image": spec["image"],
-            "target_version": spec["version"], "entry_point": entry_point if entry_point in poc.ENTRY_POINTS else "rejected",
+            "target": target.key, "target_name": target.name,
+            "target_version": spec["version"], "entry_point": entry_point if entry_point in target.entry_points else "rejected",
             "payload_sha256": hashlib.sha256(data).hexdigest(), "payload_bytes": len(data), "ran": False}
 
 
-def run_poc(entry_point, payload, build_name="vulnerable"):
+def run_poc(entry_point, payload, build_name="vulnerable", target=None):
     """Run one payload against one build, in one new container. Returns the record the harness's parent wrote.
 
     Raises SandboxError when Docker could not start the container at all: that
     is an infrastructure problem, never an outcome.
     """
-    problem = poc.validate(entry_point, payload)
+    target = target or targets.PYYAML
+    problem = target.validate(entry_point, payload)
     if problem:
-        return invalid_record(entry_point, payload, build_name, poc.PROBLEMS[problem])
-    spec = TARGET["builds"][build_name]
-    if not image_current(spec["image"]):
-        build(build_name)
+        return invalid_record(entry_point, payload, build_name, poc.PROBLEMS[problem], target)
+    spec = target.builds[build_name]
+    if not image_current(spec["image"], target):
+        if not target.lazy_build:
+            raise SandboxError("image %s is missing; build it with `python -m proveit build --target %s`"
+                               % (spec["image"], target.key))
+        build(build_name, target=target)
     iid = image_id(spec["image"])
     nonce = secrets.token_hex(16)
     name = "proveit-run-%s" % nonce[:12]
@@ -220,23 +233,25 @@ def run_poc(entry_point, payload, build_name="vulnerable"):
         record = {"outcome": "INCONCLUSIVE",
                   "why": "the sandbox timed out" if timed_out else "the harness did not return exactly one record"}
     record.update({"build": build_name, "image": spec["image"], "image_id": iid, "container": name,
+                   "target": target.key, "target_name": target.name,
                    "target_version": spec["version"], "container_exit_code": exit_code,
                    "container_timed_out": timed_out, "ran": True})
     return record
 
 
-def run_check(entry_point, payload, build_name="vulnerable", runs=None):
+def run_check(entry_point, payload, build_name="vulnerable", runs=None, target=None):
     """One check: the payload runs `runs` times (config.CHECK_RUNS), one after another, each in a new container.
 
     Returns the combined record (judge.combine). If Docker cannot start any
     one of the runs, the whole check is abandoned with SandboxError and
     nothing is returned to record: an infrastructure error is never an outcome.
     """
+    target = target or targets.PYYAML
     runs = config.CHECK_RUNS if runs is None else runs
     records = []
     for n in range(1, runs + 1):
         try:
-            record = run_poc(entry_point, payload, build_name)
+            record = run_poc(entry_point, payload, build_name, target=target)
         except SandboxError as exc:
             raise SandboxError("could not start sandbox run %d of %d: %s. No outcome was recorded." % (n, runs, exc)) from None
         if not record.get("ran"):
@@ -246,9 +261,9 @@ def run_check(entry_point, payload, build_name="vulnerable", runs=None):
     return judge.combine(records)
 
 
-def run_probe(code, build_name="vulnerable", timeout=None):
+def run_probe(code, build_name="vulnerable", timeout=None, target=None):
     """Tests only: run Python code in a container with exactly the flags a PoC run gets."""
-    spec = TARGET["builds"][build_name]
+    spec = (target or targets.PYYAML).builds[build_name]
     name = "proveit-probe-%s" % secrets.token_hex(6)
     with tempfile.TemporaryDirectory(prefix="proveit-", dir=_mount_root()) as tmp:
         _readable_by_sandbox(tmp)

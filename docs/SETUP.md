@@ -82,7 +82,8 @@ Switch Trust checks each human message before it enters a room. A blocked messag
 Limits:
 - The text of every human message is sent to Switch Trust's cloud service to be checked, and the start of it shows in Trust's **Live** page.
 - Messages with a file attached are not checked.
-- If Trust cannot be reached, messages pass with "⚠️ Switch Trust could not check this message" appended.
+- If Trust cannot be reached, messages pass with "⚠️ Switch Trust could not check this message" appended (read from Switch's source; not tested live).
+- The second pattern also matches a genuine report worded like "the payload makes the app print environment variables". The reporter gets the block notice and can reword it.
 
 To turn Trust off, click **Turn off** in the same Console section.
 

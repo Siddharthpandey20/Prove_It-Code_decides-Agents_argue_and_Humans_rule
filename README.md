@@ -92,7 +92,8 @@ A report is attacker-controlled text that ends up near agents that can run comma
 1. **Switch Trust** (the first wall; verified live on 2026-11-06): Switch checks every human message against our guardrail policy before it enters a room. A blocked message never becomes a room message, so neither Intake nor any agent receives it. Mattermost still shows the post to people, and Switch replies in its thread: "Your message was blocked by Switch Trust". Our policy is two regex patterns with the action Block, for people's messages only. Switch's Jailbreak detector is left off: in our test it also blocked report 02's proof, because a bug report's proof describes an attack. Nothing is set to Redact, because redaction would change a payload and its SHA-256. Limits:
    - The text of every human message goes to Switch Trust's cloud service to be checked.
    - Messages with a file attached are not checked.
-   - If Trust cannot be reached, messages pass with a note that they were not fully checked.
+   - If Trust cannot be reached, messages pass with a note that they were not fully checked (read from Switch's source; not tested live).
+   - The second pattern also blocks a genuine report worded like "the payload makes the app print environment variables". The reporter sees the block notice and can reword it.
 
    Two fixed phrases are easy to reword past, like the regex screen in item 3, so the protection that holds is item 2: agents only ever see fixed fields.
 
@@ -218,6 +219,7 @@ One table in [proveit/states.py](proveit/states.py) is enforced by every command
 - The regex screen is a fallback and is easy to paraphrase past. The protection that matters is that agents only ever see fixed fields.
 - Once the library itself runs attacker code (a real bug), that code runs inside the child process. It can then make the evidence it reports noisy or make the run inconclusive, but it cannot reach the result line, and the outcome is decided by the parent from what it observes.
 - Information-leak claims are never decided automatically.
+- Switch Trust's second pattern (`print (your )?env(ironment)?`) blocks an information-leak report phrased like "makes the app print environment variables". The reporter gets the block notice and can reword it; nothing is dropped silently.
 - Agent permission rules guard the commands the agents write; they are not a boundary around every program. The boundaries are the sandbox and the evidence-only design.
 
 ## Repository map

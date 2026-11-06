@@ -25,6 +25,26 @@ _PY_LINE = re.compile(r"^\s*(import\s+\w|from\s+[\w.]+\s+import\s|def\s+\w+\s*\(
                       r"if\s+__name__\s*==|with\s+open\s*\(|exec\s*\(|eval\s*\()", re.M)
 
 
+# The out-of-scope entry points by their canonical names (docs/policy/pyyaml-scope.md). A message
+# names one of these, never what the reporter wrote.
+OUT_OF_SCOPE_NAMES = ("yaml.unsafe_load_all", "yaml.unsafe_load", "yaml.load with Loader=yaml.UnsafeLoader",
+                      "yaml.load with Loader=yaml.Loader")
+
+
+def out_of_scope_name(text):
+    """The canonical name of the out-of-scope entry point in `text`, or None if it names none."""
+    s = (text or "").strip().strip("`").strip()
+    if re.search(r"unsafe_load_all", s, re.I):
+        return "yaml.unsafe_load_all"
+    if re.search(r"unsafe_load", s, re.I):
+        return "yaml.unsafe_load"
+    if re.search(r"UnsafeLoader", s, re.I):
+        return "yaml.load with Loader=yaml.UnsafeLoader"
+    if re.search(r"Loader\s*=\s*(yaml\.)?Loader\b", s) or re.search(r"\bwith\s+(yaml\.)?Loader\b(?!\s*=)", s):
+        return "yaml.load with Loader=yaml.Loader"
+    return None
+
+
 def parse_entry_point(text):
     """Map what a reporter wrote ("yaml.full_load", "yaml.load(..., Loader=yaml.FullLoader)")
     to an allowlisted key, or return (None, problem)."""

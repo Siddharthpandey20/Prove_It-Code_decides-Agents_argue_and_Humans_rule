@@ -55,6 +55,7 @@ The following rules govern all hackathon work:
 **As of 2026-11-07, branch `feat/openssf-triage` (not merged):** OpenSSF-aligned triage. Everything on this branch is **verified offline, not yet live**.
 - U1a done: every check runs the payload 3 times, one after another, each in a new container (D-011). Runs that disagree give `NOT_RELIABLY_REPRODUCED`, which needs an override to escalate (D-012). Evidence: `tests/test_repeats.py`, `tests/test_sandbox.py` `Repeats`. Timing on this machine: a normal check takes about 1.3 to 1.4 s longer; a payload that hits the 10 s call limit goes from 10.7 to 31.9 s (`scripts/time_checks.py`).
 - U1b done: a dispute needs exactly one reason code (D-013). Intake refuses a code the evidence contradicts. The reporter gets one fixed question, and only when a maintainer closes the ticket (D-014). Evidence: `tests/test_reasons.py`.
+- U1c done: [the scope policy](docs/policy/pyyaml-scope.md) is enforced at Intake. A proof through an entry point PyYAML documents as unsafe gets a fixed answer and never reaches the sandbox (D-015). The allowlist had no out-of-scope entry point, so nothing was removed. Evidence: `tests/test_scope.py`.
 
 **Merging `feat/openssf-triage` changes live behaviour.** The live Skeptic's current free-text disputes will be refused. Before using it live: paste the new Skeptic instructions from `switch/prove-it.template.yaml` into the Console agent, check the revision log, and do a full live run.
 
@@ -62,6 +63,7 @@ The following rules govern all hackathon work:
 - The new Skeptic instructions pasted into the Console agent (check the revision log).
 - "3/3 clean runs" in the Reproducer's replies, reason-coded disputes, and Intake refusing a code that contradicts the evidence.
 - The reporter's question on close.
+- The changed templates (Skeptic instructions, the triage room's new `scope-policy` doc) accepted by Switch's template check and deployed.
 
 **Next action:** Merge `feat/switch-trust` into `fix/checkpoint-2026-11-05` if the team accepts it.
 - To reset: stop Intake, delete `work/` and the `private` folder (see DEMO), then run `python -m proveit.intake run` in your own terminal.
@@ -106,6 +108,7 @@ These records are authoritative. Keep their IDs and reasons when updating them; 
   4. else no question.
 
   `also_on_patched` and `patched_not_checked` never produce a question. A maintainer may close a ticket whose standing dispute is `also_on_patched` without an override, but must add a note, and the reporter gets no question. Questions are filled only from closed lists and config. Reason: no agent text ever reaches a reporter, and a question at dispute time would reach reporters before a human decided. Source: `tests/test_reasons.py`, 2026-11-07.
+- **D-015 — A written scope policy ([docs/policy/pyyaml-scope.md](docs/policy/pyyaml-scope.md)), enforced at Intake.** `unsafe_load`, `unsafe_load_all`, and `load` with `UnsafeLoader` or `Loader` are out of scope; PyYAML documents them as unsafe for untrusted input. Intake answers with fixed text naming the entry point by its canonical name, and the proof never reaches the sandbox. Reason: the OpenSSF working group's draft calls a published threat model "one of the highest-leverage investments a project can make", and enforcing it in code means no agent or maintainer has to argue it. The Skeptic gets the same policy as a room doc, because its shell may not read files. Source: `tests/test_scope.py`, 2026-11-07.
 
 ## Important history and trials
 

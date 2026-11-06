@@ -182,7 +182,8 @@ def ticket_from_record(record):
     """Rebuild the parse result for a stored ticket (its payload lives in private/)."""
     return reports.Ticket(claim=record.get("claim", ""), severity=record.get("severity", "unrated"),
                           entry_point=record.get("entry_point", ""), payload=store.payload(record["id"]),
-                          poc_problem=record.get("poc_problem", ""), missing=list(record.get("missing", [])))
+                          poc_problem=record.get("poc_problem", ""), missing=list(record.get("missing", [])),
+                          out_of_scope_entry=record.get("out_of_scope_entry", ""))
 
 
 def fill(record, ticket):
@@ -191,6 +192,8 @@ def fill(record, ticket):
     record.update({
         "claim": ticket.claim, "severity": ticket.severity, "entry_point": ticket.entry_point,
         "poc_problem": ticket.poc_problem, "missing": ticket.missing,
+        "out_of_scope_entry": ticket.out_of_scope_entry if ticket.out_of_scope_entry in poc.OUT_OF_SCOPE_NAMES else (
+            "an unsafe loader" if ticket.out_of_scope_entry else ""),
         "payload_sha256": poc.sha256(ticket.payload) if ticket.payload else None,
         "payload_bytes": len(ticket.payload.encode("utf-8", "surrogatepass")) if ticket.payload else 0,
         "tags": poc.tags(ticket.payload),
@@ -365,7 +368,7 @@ class Intake:
         target = target_for(ticket)
         store.apply(record, command, actor, by, target=target)
         if target == "invalid_proof":
-            self.intake.post(messages.invalid_proof(record["id"], ticket.poc_problem), thread)
+            self.intake.post(messages.invalid_proof(record["id"], ticket.poc_problem, record.get("out_of_scope_entry")), thread)
         elif target == "awaiting_poc":
             self.intake.post(messages.ask_for_proof(record["id"], ticket), thread)
         else:

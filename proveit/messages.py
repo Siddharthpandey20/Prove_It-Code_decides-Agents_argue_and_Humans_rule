@@ -40,7 +40,21 @@ def foreign_reply(ticket_id):
             "report. If you have your own proof, post it as a new report in this channel." % ticket_id)
 
 
-def invalid_proof(ticket_id, problem):
+def out_of_scope(ticket_id, entry_name):
+    """Fixed text for a proof through an entry point PyYAML documents as unsafe (decision D-015).
+
+    `entry_name` is one of poc.OUT_OF_SCOPE_NAMES, never the reporter's own words.
+    """
+    if entry_name not in poc.OUT_OF_SCOPE_NAMES:
+        entry_name = "this loader"
+    return ("%s: %s is documented by PyYAML as unsafe for untrusted input, so it is out of scope (see the scope "
+            "policy). Can you show the issue with safe_load or full_load?" % (ticket_id, entry_name))
+
+
+def invalid_proof(ticket_id, problem, out_of_scope_entry=None):
+    if problem == "unsafe_loader":
+        return "**%s: the proof was not run.**\n\n%s\n\nReply in this thread with a corrected proof.\n\n%s" % (
+            ticket_id, out_of_scope(ticket_id, out_of_scope_entry), scope_line())
     return ("**%s: the proof was not run.** Reason: %s.\n\n%s\n\nReply in this thread with a corrected proof.\n\n%s" %
             (ticket_id, poc.PROBLEMS.get(problem, problem), POC_FORMAT_HELP, scope_line()))
 

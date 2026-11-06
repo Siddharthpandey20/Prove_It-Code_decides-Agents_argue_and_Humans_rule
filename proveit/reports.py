@@ -33,6 +33,8 @@ class Ticket:
     payload: str = ""
     poc_problem: str = ""
     missing: list = field(default_factory=list)
+    # The canonical name (poc.OUT_OF_SCOPE_NAMES) of an out-of-scope entry point, never the reporter's words.
+    out_of_scope_entry: str = ""
 
     def complete(self):
         return not self.missing and not self.poc_problem
@@ -98,8 +100,9 @@ def parse(text):
         missing.append("poc")
     if not claim:
         missing.append("claim")
+    out_of_scope = (poc.out_of_scope_name(fields.get("entry point")) or "an unsafe loader") if problem == "unsafe_loader" else ""
     return Ticket(claim=claim, severity=severity, entry_point=entry_point, payload=payload,
-                  poc_problem=problem, missing=missing)
+                  poc_problem=problem, missing=missing, out_of_scope_entry=out_of_scope)
 
 
 def merge(previous, followup_text):
@@ -111,11 +114,13 @@ def merge(previous, followup_text):
         merged.payload = update.payload
         merged.entry_point = update.entry_point or (previous.entry_point if update.payload else "")
         merged.poc_problem = update.poc_problem
+        merged.out_of_scope_entry = update.out_of_scope_entry
     elif update.entry_point:
         # Only an entry point: it completes the payload already on file.
         merged.entry_point = update.entry_point
         if merged.poc_problem in ("unknown_entry_point", "no_entry_point"):
             merged.poc_problem = ""
+            merged.out_of_scope_entry = ""
     if not merged.claim and update.claim:
         merged.claim = update.claim
     if merged.severity == "unrated" and update.severity != "unrated":

@@ -125,6 +125,8 @@ agents:
             `check <id> --build patched`.
          e. Does the claimed severity match the outcome class?
             (severity_supported_by_outcome)
+         f. Is the report within the room's scope-policy doc
+            (docs/policy/pyyaml-scope.md)? If not, out_of_scope_api.
       3. End your message with exactly one of these two lines. Intake records
          it; Switch tells Intake the message came from you, so nobody else can
          record a verdict in your name:
@@ -241,6 +243,21 @@ rooms:
           check runs PyYAML 5.3.1 (vulnerable); the patched 5.4 runs only when
           someone asks. A result that reproduces on both builds is flagged as
           a possible new issue for a human.
+      - name: scope-policy
+        description: What counts as a PyYAML vulnerability here (docs/policy/pyyaml-scope.md)
+        instructions: Use the out_of_scope_api reason code for a report outside this scope.
+        content: |
+          Threat model: an application loads YAML it did not write through a
+          PyYAML entry point; the attacker controls only that YAML document.
+          In scope: safe_load, full_load, and load with SafeLoader or
+          FullLoader. full_load is in scope because it is documented as
+          avoiding code execution (CVE-2020-14343 is a case where it did not).
+          Out of scope: unsafe_load, unsafe_load_all, load with UnsafeLoader or
+          Loader, and any loader PyYAML documents as unsafe for untrusted
+          input; also proofs that need network access, other files,
+          environment variables, or code instead of data. Intake already
+          refuses out-of-scope entry points before the sandbox; dispute with
+          out_of_scope_api if a report's claim still depends on one.
     kickoff: |
       @prove-it-reproducer @prove-it-skeptic this is the triage room. In one
       line each, say what you will do when a maintainer asks you about a

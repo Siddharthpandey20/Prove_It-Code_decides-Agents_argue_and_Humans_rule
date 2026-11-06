@@ -55,16 +55,36 @@ If Console refuses the template because it cannot add `prove-it-intake` to a roo
 
 ## 5. Turn on Switch Trust
 
-Not configured by the team yet. Switch Trust checks every human message before it reaches a room; a blocked message never becomes a room message, so no agent sees it, and the sender gets a notice instead.
+Switch Trust checks each human message before it enters a room. A blocked message never becomes a room message, so neither Intake nor any agent receives it. Mattermost still shows the post to people, and Switch replies in its thread: "🚫 Your message was blocked by Switch Trust and was not delivered to the room." Checked live on 2026-11-06 ([evidence](evidence/live-trust-2026-11-06-windows.log)).
 
-1. Sign up for Switch Trust and open **Settings → Configurations → Guardrail policies → Add policy**.
-2. Enable for the **User** role:
-   - **Jailbreak** → Block
-   - **Secrets** → Redact
-   - **Regex** → Block, with patterns such as `(?i)ignore (all |your |previous )+(instructions|rules)` and `(?i)print (your )?env(ironment)?`
-3. Copy the policy's **Policy ID** from the list, and create an API key (Editor role or higher).
-4. In Switch Console, on the server's **Home** page, fill in the **Switch Trust** section (shown to server admins): endpoint `https://api.switchagents.ai`, the policy ID, and the API key.
-5. Post `python scripts/replay.py report 04` and confirm the message is blocked before it reaches `#proveit-intake`. Then update the README's verification table.
+1. Sign up at [app.switchagents.ai](https://app.switchagents.ai/) (organization name, then a short survey).
+2. **Settings → Configurations → Guardrail policies → Add policy.** Name it `Prove It guard` and set it up like this:
+   - **Regex**: On. Custom name `Prove It injection`. Tick **User** only, with Action **Block** and Severity **High**. Severity is only a label; it does not change what matches. Paste these two patterns, one per line:
+     ```
+     (?i)ignore\s+((all|your|previous)\s+)+(instructions|rules)
+     (?i)print (your )?env(ironment)?
+     ```
+     The first pattern uses `\s+` because replay 04 breaks the line after "previous". The older pattern `(?i)ignore (all |your |previous )+(instructions|rules)` did not match it.
+   - **Everything else Off**, including **Jailbreak**. With Jailbreak on, report 02's proof (`!!python/object/apply:os.system [...]`) was blocked too, so the slop could never be tested and closed with evidence. A bug report's proof describes an attack.
+   - **Secrets and every PII detector stay off**, and nothing uses **Redact**. Redaction would change a payload, so its SHA-256 and the sandbox result would no longer match what the reporter sent. Agents never see reporter text anyway.
+   - Leave **Assistant** unticked. Switch checks agents' posts (Intake, Reproducer, Skeptic) as the Assistant role, so a User-only policy never blocks them.
+
+   Click **Create policy**. Copy its ID from the **Policy ID** column, or from the **ID:** box on the policy's page. A new account also has a **Baseline Monitoring (Alert)** policy: do not use its ID. Its Alert action adds a "flagged" line to messages.
+3. **Settings → Admin → API keys → Create key**: any name, Role **Editor**, an expiration of your choice. The key is shown once, so copy it.
+4. In Switch Console, on the server's **Home** page, open **Switch Trust Integration** (server admins only). Fill in:
+   - **Switch Trust Endpoint:** `https://api.switchagents.ai`
+   - **Guardrails Policy ID:** the policy ID
+   - **Switch Trust API key:** the key
+
+   Save. It shows **Monitoring Active**, and the server applies the settings to the next message with no restart. Keep the key and policy ID out of the repository and chat.
+5. Post `python scripts/replay.py report 04`. Expect the 🚫 reply in its thread, no ticket, and nothing in Intake's output. switch-core.log shows `[BRIDGE-IN] message from … not relayed — Switch Trust outcome=blocked`. Trust's **Live** page lists the check as **Blocked**.
+
+Limits:
+- The text of every human message is sent to Switch Trust's cloud service to be checked, and the start of it shows in Trust's **Live** page.
+- Messages with a file attached are not checked.
+- If Trust cannot be reached, messages pass with "⚠️ Switch Trust could not check this message" appended.
+
+To turn Trust off, click **Turn off** in the same Console section.
 
 Prove It works without this step: Intake's screen quarantines replay 04, and even a paraphrased injection only ever reaches the agents as fixed fields.
 
@@ -128,4 +148,6 @@ Record agent cost per report from Switch ROI or your provider's dashboard: `pyth
 | Room creation fails with `localhost:<port>/api/v4/channels ... actively refused` | Mattermost's container stopped (it has no restart policy; restarting Docker or WSL stops it). `docker start switchdash-local-mattermost-mattermost-1`, wait for `/api/v4/system/ping`, then create the rooms again with the rooms-only template |
 | A maintainer's message or a reporter's follow-up gets no reaction from Intake | Seen twice in the 2026-11-06 live run: the message reached Mattermost but Switch never delivered it to Intake (Intake's log has no line for it). Send it again |
 | An agent ignores changed instructions | Saving them in the agent's **Configuration** creates a new revision and restarts its idle session; check `switch-console.log` for `Started agent ... revision N`. A dispute recorded before the change stays until a maintainer overrides it |
+| Nothing typed in Mattermost reaches Switch; switch-core.log repeats `mattermostdriver.websocket ... timed out during opening handshake` | Seen on 2026-11-06 on Windows. `localhost` resolves to IPv6 `::1` first, and WSL's `networkingMode=mirrored` (in `%USERPROFILE%\.wslconfig`) made `::1:<port>` hang instead of refusing, so the server's websocket to Mattermost timed out. Comment out that line, quit Console, run `wsl --shutdown`, let Docker Desktop restart, `docker start` the Mattermost container, then open Console. The server logs `Websocket authentification OK` once it reconnects |
+| Agents work (Intake records the Skeptic's verdict) but their replies never appear in `#proveit-triage`; switch-core.log says `Mattermost post /posts failed: You do not have the appropriate permissions` | Seen on 2026-11-06 after Switch re-created the agents' Mattermost bot accounts during a reconnect: the new bots were not members of the private triage channel. In `#proveit-triage` type `/invite @prove-it-reproducer @prove-it-skeptic` |
 | `Refused: only Prove It's maintainers can ...` | Add yourself: `python -m proveit.intake maintainers add <your Mattermost username>`, then restart `python -m proveit.intake run` |

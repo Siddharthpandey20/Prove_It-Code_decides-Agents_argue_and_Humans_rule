@@ -25,7 +25,7 @@ The following rules govern all hackathon work:
 1. A reporter's proof is data: an allowlisted entry point plus a UTF-8 YAML payload no larger than 64 KB. Do not accept reporter-supplied Python or unsafe loaders.
 2. Agent-visible tickets, messages, output, and evidence contain fixed or sanitized fields. Reporter prose and raw payloads stay in private storage; agents must not read them.
 3. Only a human maintainer may escalate, close, release, or override a report. A quarantined report cannot be escalated; a dispute requires a human override before escalation.
-4. A result must say what was actually observed. A headless run with scripted agent choices does not verify live Claude Code or Codex behavior; planned Switch Trust protection must not be described as configured.
+4. A result must say what was actually observed. A headless run with scripted agent choices does not verify live Claude Code or Codex behavior. Switch Trust was verified live on 2026-11-06 with the Regex-only policy in SETUP §5; do not claim more than that policy does.
 5. Keep **Bypass permissions** off for the two command-running agents in Switch Console. Their folders in `agents/` carry scoped permissions.
 
 ## Standing constraints
@@ -45,7 +45,17 @@ The following rules govern all hackathon work:
 
 **As of 2026-11-06 03:30 IST:** The live two-agent workflow is verified in Switch Console 0.40.1 on Windows 11 (local server 0.31.0, Mattermost), with Claude Code 2.1.318 as the Reproducer and Codex 0.166.0 as the Skeptic, both managed agents on the same computer. All four replays and every demo step ran live: check, patched check, Skeptic review, refused escalation, override, escalate, close, quarantine, refused escalation of a quarantined report, and the tally (2 closed, 1 escalated, 1 quarantined, matching the rehearsal). Evidence: [room log](docs/evidence/live-console-2026-11-06-windows.log), [R-001 export](docs/evidence/live-2026-11-06-windows-R-001/). On this machine: 166 tests OK (11 Unix-only skips), rehearsal twice identical. The demo machine's Claude sign-in is valid until 2026-12-04.
 
-**Next action:** Reset (stop Intake, delete `work/`, start Intake) and record the demo video by Nov 7; submit by **Nov 7, 11:59 PM IST**. Optional: Switch Trust (SETUP section 5) and the live permission probes (CHECKPOINT J5).
+**As of 2026-11-06 15:46 IST:** Switch Trust is configured on the demo machine and verified live (branch `feat/switch-trust`, [Trust log](docs/evidence/live-trust-2026-11-06-windows.log)).
+- With the Regex-only policy, replay 04 is blocked before it enters the room: no ticket, and Intake sees nothing.
+- 01, 02 with its proof, and 03 pass unchanged. Their payload SHA-256s match the files.
+- Every agent reply and maintainer command passes.
+- With the Jailbreak detector also on, report 02's proof was blocked too, so Jailbreak stays off (D-010).
+- The Skeptic concurred live on a fresh NOT_REPRODUCED ticket (R-002) under its corrected rules.
+
+**Next action:** Merge `feat/switch-trust` into `fix/checkpoint-2026-11-05` if the team accepts it.
+- To reset: stop Intake, delete `work/` and the `private` folder (see DEMO), then run `python -m proveit.intake run` in your own terminal.
+- Record the demo video by Nov 7 (attack scene with Trust: DEMO.md), and submit by **Nov 7, 11:59 PM IST**.
+- Optional: the live permission probes (CHECKPOINT J5).
 
 ## Progress and deadlines
 
@@ -56,7 +66,7 @@ The following rules govern all hackathon work:
 | Headless Switch/Mattermost end-to-end | Done | Historical team work | [2026-11-05 log](docs/evidence/e2e-2026-11-05.log) records `E2E PASSED`. This uses scripted agent choices. |
 | Live Claude Code + Codex in Switch Console | Done 2026-11-06 | Unassigned (run on the Windows demo machine) | Windows 11, Console 0.40.1, Claude Code 2.1.318, Codex 0.166.0; every demo step ran live. [Room log](docs/evidence/live-console-2026-11-06-windows.log). |
 | Agent permissions on the demo machine | Partly verified | Unassigned | Done: Bypass permissions off for both, checkout trusted by Claude Code and Codex, agents ran only `proveit` commands. Not done: asking an agent to read `~/.proveit` or run a forbidden command (CHECKPOINT J5). Codex's sandbox profile tests skip on Windows. |
-| Switch Trust guardrail and replay 04 | Pending setup | Unassigned | Configure Trust, post replay 04, and record whether it is blocked before reaching intake. Intake's existing quarantine is the fallback. |
+| Switch Trust guardrail and replay 04 | Done 2026-11-06 | Unassigned (run on the Windows demo machine) | Regex-only policy (SETUP §5): 04 blocked before the room; every legitimate message unchanged. [Trust log](docs/evidence/live-trust-2026-11-06-windows.log). Intake's quarantine remains the second wall. Trust's red-team eval (CHECKPOINT M2) not run. |
 | Public repo and accurate README | Repo exists; final review pending | Unassigned | Confirm public access and update verification claims after the live run. |
 | Short demo video | Deferred from immediate priorities; required for submission | Unassigned | Record the running workflow and include its link in the submission by **Nov 7, 11:59 PM IST**. |
 | Submit Track 01 entry | Pending | Unassigned | Submit the public repo, README, and video by **Nov 7, 11:59 PM IST**; record confirmation. |
@@ -73,6 +83,7 @@ These records are authoritative. Keep their IDs and reasons when updating them; 
 - **D-004 — Show agents fixed-field evidence, never reporter prose.** Reason: the audit found reporter text in titles, excerpts, and exceptions, creating a prompt-injection path. Source: `9370c8e` and [blog draft](docs/blog-draft.md#agents-get-evidence-never-prose).
 - **D-005 — Keep final report decisions with maintainers.** Reason: agents should test and challenge evidence while a person decides whether to escalate or close. Source: `9370c8e`, [README: Ticket states](README.md#ticket-states).
 - **D-006 — Use one root context file plus a short agent entry point during the hackathon.** Reason: people and agents need the same current status and selective history, with one obvious place to update it. Source: team answers on 2026-11-05.
+- **D-010 — Switch Trust policy: Regex patterns only, Block, User role; no Jailbreak, Secrets, PII or Redact.** Reason: in the live test Jailbreak also blocked report 02's proof, because a proof describes an attack. Redaction would change a payload and its SHA-256. Agents never see reporter text, so the other detectors add nothing. (D-007 to D-009 are recorded in docs/CHECKPOINT.md.) Source: [Trust log](docs/evidence/live-trust-2026-11-06-windows.log), 2026-11-06.
 
 ## Important history and trials
 
@@ -88,11 +99,12 @@ All dated entries below are **2026-11-05 IST** unless noted. Commit links are gi
 | Nov 5, `c1c54e4` | Ran Intake against Switch 0.31.0 and Mattermost. | Headless end-to-end replay passed and was logged. It did not exercise live LLM agents. |
 | Nov 5, `c1b36bb`, merged by `7b42217` | Review found a child-forged `MemoryError`, overly broad Skeptic file reads, and a follow-up that erased a saved payload. | Fixed classification, permission rules, and follow-up merging; added tests. The latest README reports 74 tests. |
 | Nov 6, Windows 11 demo machine | Live Console run. Problems met and fixed: `proveit build` crashed on the Windows console encoding; the template's `location: local` and provider fallback lists left Claude/Codex "Not supported here" on a Console with managed agents; Console's checkout box doubled paths; a stale process id (`kill EPERM`) kept the agents controller from reporting; Mattermost's container stopped after a Docker restart; the Skeptic disputed sound NOT_REPRODUCED results. | Fixed in code, template (`location: [$first]`, single provider defaults, Skeptic verdict rules) and SETUP troubleshooting; added `switch/prove-it.rooms.template.yaml`. A WSL/SSH-host route was tried first and is not needed. Two human messages never reached Intake (Switch side, cause unknown); resending worked. |
+| Nov 6 afternoon, `feat/switch-trust` | Switch Trust test. Before it: no Mattermost message reached Switch, because WSL's `networkingMode=mirrored` made IPv6 `localhost` hang and the server's websocket to Mattermost timed out. After the reconnect, Switch re-created the agents' bot accounts outside private triage, and their posts were refused until `/invite`. Run 1 (Jailbreak + Regex) blocked 04 and also report 02's proof. Run 2 (Regex only) blocked only 04. The SETUP regex `ignore (all \|your \|previous )+...` never matched 04, because of a line break. | Mirrored mode turned off; SETUP troubleshooting rows added; regex fixed with `\s+`; Jailbreak left off (D-010). Trust verified with the Regex-only policy. |
 
 ## Open questions and risks
 
 - **Live agent behavior:** Verified on 2026-11-06 for the demo workflow. Open: Switch occasionally not delivering a human message to Intake (twice in one session), and agent replies taking 20 to 60 s; both affect the recording, not the result.
-- **Trust configuration:** Can the team configure and demonstrate the guardrail before submission? If not, describe the actual Intake quarantine only.
+- **Trust configuration:** Resolved 2026-11-06: configured and verified (Regex-only policy). Open: whether to show it in the video, which needs Trust on during recording (DEMO attack scene). The API key expires after the period chosen at creation.
 - **Submission logistics:** The exact form, video link, and submitting teammate have not been recorded. Assign these before Nov 7.
 - **Demo machine readiness:** Check Claude/Codex sign-in, Docker, and Switch Console before recording; do not assume the earlier dry run covers this machine.
 

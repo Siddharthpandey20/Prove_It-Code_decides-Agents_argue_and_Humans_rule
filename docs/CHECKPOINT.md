@@ -127,7 +127,7 @@ Finding numbers (F1 to F31) refer to the assessment.
 
 Tooling for each is in place; they are not ticked by the agent.
 
-- [ ] M1 Configure Switch Trust and confirm replay 04 is blocked (SETUP section 5).
+- [x] M1 Configure Switch Trust and confirm replay 04 is blocked (SETUP section 5). Done 2026-11-06 by the human maintainer on the Windows demo machine. With the Regex-only policy, 04 was blocked before the room and every legitimate message passed unchanged. The Jailbreak detector was dropped because it blocked report 02's proof (D-010 in `context.md`). Evidence: `docs/evidence/live-trust-2026-11-06-windows.log`.
 - [ ] M2 Run the Trust red-team evaluation and record the score.
 - [ ] M3 Record agent cost from Switch ROI with `python -m proveit cost`.
 - [ ] M4 A Windows teammate runs the suite on Windows.

@@ -160,11 +160,11 @@ The sandbox image is `python:3.9-slim`, pinned by digest. Python 3.9 is end of l
 ```sh
 git clone https://github.com/akhilll0305/team-pikachu-switch-ai && cd team-pikachu-switch-ai
 python -m proveit build                      # builds proveit-target:vulnerable and :patched (needs network once)
-python -m unittest discover -s tests -v      # 266 tests, about a minute and a half; Docker must be running
-python scripts/rehearse.py --twice           # replays all four reports twice and compares
+python -m unittest discover -s tests -v      # 285 tests, about two minutes; Docker must be running
+python scripts/rehearse.py --twice           # replays all four PyYAML reports twice and compares
 ```
 
-Expected on Windows 11 (2026-11-07): `Ran 266 tests ... OK (skipped=12)`. 11 of those skips need macOS or Linux (the harness's own classification tests, POSIX file permissions, Codex's sandbox profile) and say so; the 12th is the OSV schema test, which needs the optional `jsonschema` package. If Docker is not running, the sandbox tests are skipped as well and the skip count goes up; that is not a pass. The tests in `tests/test_agent_rules.py` check the Skeptic's Codex rules and skip when the Codex CLI is not installed (as on CI); that skip is expected. The rehearsal ends with:
+Expected on Windows 11 (2026-11-07): `Ran 285 tests ... OK (skipped=12)` when the sqlparse images are built (`python -m proveit build --target sqlparse`), or `skipped=14` without them — the two sqlparse reproduce/not-reproduce tests skip when their images are absent and never build one. 11 of the base skips need macOS or Linux (the harness's own classification tests, POSIX file permissions, Codex's sandbox profile) and say so; the 12th is the OSV schema test, which needs the optional `jsonschema` package. If Docker is not running, the sandbox tests are skipped as well and the skip count goes up; that is not a pass. The tests in `tests/test_agent_rules.py` check the Skeptic's Codex rules and skip when the Codex CLI is not installed (as on CI); that skip is expected. The rehearsal ends with:
 
 ```
 **Tally:** 4 reports. By status: 2 closed, 1 escalated, 1 quarantined. By outcome: 1 CODE_EXECUTION, 2 NOT_REPRODUCED, 1 not run. ...
@@ -270,6 +270,10 @@ The record belongs to Intake, not to a room: every room pair one Intake serves s
 | Four-field proof request, `affected_version` required, `expected`/`actual` never reach agents | Verified offline, not yet live | `tests/test_report_fields.py`, `tests/test_sandbox.py` (`Canary`) |
 | DRAFT advisory pack on escalate (OSV, GHSA, timeline) | Verified offline, not yet live | `tests/test_advisory.py`; the OSV schema test needs the optional `jsonschema` and skips without it |
 | Proof record per reporter and the one-open-report limit | Verified offline, not yet live | `tests/test_reputation.py`, rehearsal step 6 |
+| Second target behind one adapter; PyYAML unchanged (same tests, same rehearsal digest, `target/` byte-identical) | Verified offline, not yet live | `tests/test_targets.py`, `tests/test_second_target.py` |
+| sqlparse CVE-2023-30608 reproduces on 0.4.3, not on 0.4.4 (same sandbox and limits) | Verified offline, not yet live | `tests/test_second_target.py` (Docker), `python scripts/rehearse.py --second-target --twice` |
+| One Intake, two rooms: target from the room not the text; global ids; shared reporter record; cross-room decisions | Verified offline, not yet live | `tests/test_rooms.py` |
+| sqlparse room pair deployed from its own template | **Not yet deployed** | `switch/prove-it.sqlparse.rooms.template.yaml` (separate file; the live Skeptic's Console instructions do not know sqlparse yet) |
 | Trust red-team eval score | **Not yet run** | |
 | Agent cost per report | **Not recorded** | `proveit cost` once a human reads Switch ROI or a provider dashboard |
 
@@ -282,7 +286,7 @@ The record belongs to Intake, not to a room: every room pair one Intake serves s
 
 ## Limits
 
-- One target: PyYAML, pinned to 5.3.1 and 5.4. Proofs are YAML payloads through four allowlisted entry points; bugs that need other inputs or other APIs can't be proven here.
+- Two targets, but only PyYAML is live. PyYAML is pinned to 5.3.1 and 5.4 (YAML payloads through four allowlisted entry points). A second target, sqlparse (0.4.3 vs 0.4.4), is built and verified offline but not yet deployed to a live room; see "A second target" below. Bugs that need other inputs or other APIs still can't be proven here.
 - Reports are pasted into chat; there is no HackerOne or GitHub integration.
 - The regex screen is a fallback and is easy to paraphrase past. The protection that matters is that agents only ever see fixed fields.
 - Once the library itself runs attacker code (a real bug), that code runs inside the child process. It can then make the evidence it reports noisy or make the run inconclusive, but it cannot reach the result line, and the outcome is decided by the parent from what it observes.
@@ -291,9 +295,19 @@ The record belongs to Intake, not to a room: every room pair one Intake serves s
 - Agent permission rules guard the commands the agents write; they are not a boundary around every program. The boundaries are the sandbox and the evidence-only design.
 - Everything added on 2026-11-07 (repeats, reason codes, scope policy, four-field request, advisory pack, proof record) is verified offline, not yet live. The live Skeptic must get the new instructions first: its free-text disputes are refused now.
 
+## A second target (verified offline, not yet live)
+
+The same Intake, Reproducer and Skeptic can serve more than one library. A second target, **sqlparse**, is built and verified offline to show it:
+
+- **The proof.** sqlparse 0.4.3 has a ReDoS in its string-literal regex ([CVE-2023-30608](https://github.com/andialbrecht/sqlparse/security/advisories/GHSA-rrm6-wvj7-cwh2), fixed in 0.4.4). A 43-byte SQL payload (a quote then many backslashes, no closing quote) through the documented `sqlparse.parse` exhausts the one call on 0.4.3 (RESOURCE_EXHAUSTION, 3/3) and finishes at once on 0.4.4 (NOT_REPRODUCED, 3/3), in a container with the same flags and limits as PyYAML.
+- **One adapter.** Everything library-specific lives behind a `Target` (`proveit/targets.py`); the sandbox, Intake, messages, evidence and advisory take a target. PyYAML's behaviour is unchanged — the same test suite, the same rehearsal digest, and `target/` byte-identical.
+- **Its own sandbox and scope.** `target-sqlparse/` (own Dockerfile, both versions pinned by SHA-256) and [its scope policy](docs/policy/sqlparse-scope.md). sqlparse documents nothing as unsafe, so its out-of-scope list is empty: an internal module is simply not on the allowlist. Its images are built only by `python -m proveit build --target sqlparse`.
+- **Its own room pair.** `switch/prove-it.sqlparse.rooms.template.yaml` adds `#sqlparse-intake` / `#sqlparse-triage`, served by the same agents. A report's target comes from the room it arrived in, ticket ids are one global sequence, and the reporter record is shared across rooms.
+- **What is left for a live run:** deploy that template, build the sqlparse images on the demo machine, and update the Skeptic's Console instructions (they still describe PyYAML). Rehearse it offline with `python scripts/rehearse.py --second-target --twice`.
+
 ## Future work
 
-- A second library, with its own scope policy and room pair; none exists yet.
+- A third target, or per-room maintainer lists (today one maintainer list governs every room).
 
 ## Repository map
 
@@ -313,13 +327,15 @@ proveit/states.py         the state machine
 proveit/actions.py        every action on a ticket, and the tally
 proveit/messages.py       every message posted, generated from the evidence
 proveit/cli.py            the commands agents and maintainers run
-target/                   sandbox image: parent harness and child
+proveit/targets.py        the target adapter: one interface per library (PyYAML, sqlparse)
+target/                   PyYAML sandbox image: parent harness and child
+target-sqlparse/          sqlparse sandbox image (second target): its own Dockerfile, harness and child
 agents/                   per-agent working folders with permission lockdowns
-switch/                   the Switch template
-reports/replays/          the four demo reports
-scripts/                  rehearsal, private Switch server, replay driver, end-to-end test, check timing
+switch/                   the Switch templates (PyYAML, and the separate sqlparse rooms template)
+reports/replays/          the four PyYAML demo reports; reports/replays/sqlparse/ the sqlparse replays
+scripts/                  rehearsal (--second-target for sqlparse), private Switch server, replay driver, end-to-end test, check timing
 docs/                     setup guide, demo script, blog draft, evidence
-docs/policy/              the PyYAML scope policy Intake enforces
+docs/policy/              the PyYAML and sqlparse scope policies Intake enforces
 tests/data/               a copy of the official OSV schema (source and licence in its README)
 ```
 

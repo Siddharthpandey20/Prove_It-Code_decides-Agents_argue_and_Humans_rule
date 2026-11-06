@@ -31,3 +31,7 @@ Say clearly that the reports are replays: 01 is the public CVE advisory, 02 and 
 ## #HowISwitch clip (30 s)
 
 The attack scene alone. Show the hidden instructions, then the 🚫 Switch Trust reply in the post's thread and the empty triage room (with Trust off: the quarantine notice and the refused escalation instead). Then show an evidence-only ticket (for example R-001's) to make the point that agents only ever see fixed fields.
+
+## Not in this demo: the second target (U4)
+
+This script is PyYAML only, and the take order above is unchanged. A second target, sqlparse (CVE-2023-30608), is built and verified offline on branch `feat/second-library` but not deployed to a live room, so it is not recorded here. To show it offline instead of on camera, run `python scripts/rehearse.py --second-target`: the same Intake and agents handle sqlparse tickets in their own room, reproducing the ReDoS on 0.4.3 and not on 0.4.4. A live sqlparse scene would first need the sqlparse rooms template deployed, the sqlparse images built, and the Skeptic's Console instructions updated (they still describe PyYAML).

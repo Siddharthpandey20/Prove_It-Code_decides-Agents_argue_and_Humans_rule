@@ -33,7 +33,8 @@ class Scope(WorkDirTest):
             for written, canonical in OUT_OF_SCOPE.items():
                 with self.subTest(entry=written):
                     agent = self.make_intake()
-                    self.report(agent, report(written))
+                    # One reporter per case: rejections count against a reporter (D-018), tested in test_reputation.
+                    self.report(agent, report(written), sender="reporter-" + canonical + written)
                     record = store.all_tickets()[-1]
                     self.assertEqual(record["status"], "invalid_proof")
                     self.assertEqual(record["out_of_scope_entry"], canonical)

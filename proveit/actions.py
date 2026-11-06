@@ -220,6 +220,24 @@ def close_question(record, requested=None):
     return reasons.derived(latest_run(record, "vulnerable"))
 
 
+def _count_outcome(record, verdict):
+    """The reporter's proof record (decision D-018): at most one count per ticket, outcomes only."""
+    from . import reputation
+    contact = store.load_private_json(record["id"], "contact.json")
+    key = contact.get("reporter_key")
+    if not key:
+        return  # no sender id on the report (e.g. `proveit submit`): nothing is recorded
+    if verdict == "escalate":
+        reputation.add(key, contact.get("id_source"), "good")
+        record["counted_good"] = True
+    elif verdict == "close" and not record.get("counted_invalid") and record.get("claim") != "info_leak":
+        outcome = (latest_run(record, "vulnerable") or {}).get("outcome")
+        if outcome in (judge.NOT_REPRODUCED, judge.NOT_RELIABLY_REPRODUCED):
+            reputation.add(key, contact.get("id_source"), "invalid")
+            record["counted_invalid"] = True
+    store.save(record)
+
+
 def _decide(ticket_id, verdict, actor, by, note="", reason=None):
     """escalate or close. A close may name the reason code whose question the reporter gets."""
     record = store.load(ticket_id)
@@ -247,6 +265,7 @@ def _decide(ticket_id, verdict, actor, by, note="", reason=None):
         if code and not on_patched_too and reasons.question(code, record, latest_run(record, "vulnerable")):
             question_code = code  # never a rejection question over a possible new issue
     store.apply(record, verdict, actor, by, note=note, **({"question": question_code} if question_code else {}))
+    _count_outcome(record, verdict)
     if verdict == "close":
         record["decision_question"] = question_code
         store.save(record)

@@ -28,7 +28,7 @@ import sys
 import threading
 from pathlib import Path
 
-from . import actions, evidence, messages, reasons, reports, screen, states, store
+from . import actions, evidence, messages, reasons, reports, reputation, screen, states, store
 from .config import LEGACY_STATE_DIR, PROVEIT_HOME, TARGET, ensure_home
 from .switch_client import Agent, CursorStore, SwitchError, open_to_everyone, register_agent
 
@@ -37,7 +37,7 @@ STATE_FILE = Path(os.environ.get("PROVEIT_STATE") or PROVEIT_HOME / "intake.json
 LEGACY_STATE_FILE = LEGACY_STATE_DIR / "intake.json"
 TRIAGE_LINK_LABEL = "triage"
 # Decisions only the maintainers listed in the state file may make.
-HUMAN_ONLY = ("escalate", "close", "release", "override", "notify")
+HUMAN_ONLY = ("escalate", "close", "release", "override", "notify", "clear-reporter")
 # Verdicts only the Skeptic agent (or a maintainer) may record.
 VERDICTS = ("concur", "dispute")
 
@@ -251,7 +251,7 @@ class Handled:
 
 
 class Intake:
-    VERBS = "escalate|close|release|override|notify|concur|dispute|evidence|status|tally"
+    VERBS = "escalate|close|release|override|notify|concur|dispute|evidence|status|tally|clear-reporter"
     # A command is the text right after the @mention: "@prove-it-intake dispute R-001 patched_not_checked".
     COMMAND = re.compile(r"[\s:,]*(%s)\b\s*(R-\d{3,})?\s*(.*)" % VERBS, re.I | re.S)
 
@@ -271,6 +271,7 @@ class Intake:
         skeptic = state.get("skeptic", DEFAULTS["skeptic"])
         self.skeptic_names = {n.lower() for n in [skeptic, "Prove It Skeptic"] + list(state.get("skeptic_names") or [])}
         self.lock = threading.RLock()
+        self.warned_fallback = False  # one warning per run when `sender` is missing
         self.intake = None   # anything with .post(body, thread_id=None)
         self.triage = None
 
@@ -348,18 +349,46 @@ class Intake:
             # A retry after a failure part-way through: the ticket exists already.
             log.info("report %s already has a ticket; not creating another", thread)
             return
+        key, source = self.reporter_key(payload)
+        if key and reputation.is_limited(key):
+            open_ = reputation.open_tickets(key)
+            if open_:
+                # Decision D-018: one open report at a time. The new report's text is not stored anywhere.
+                self.intake.post(messages.limited_reporter(open_), thread)
+                self.triage.post(messages.limited_notice(reputation.short(key), reputation.get(key)["invalid"]))
+                return
         result = screen.screen(text)
         ticket = reports.parse(text)
         record = store.create({}, text, source=self.source)
         with store.ticket_lock(record["id"]):
             store.save_private_json(record["id"], "contact.json",
                                     {"intake_thread": thread, "reporter": payload.get("sender_name", "unknown"),
-                                     "message_id": payload.get("message_id")})
+                                     "message_id": payload.get("message_id"), "reporter_key": key, "id_source": source})
             fill(record, ticket)
             if result.blocked:
                 self.quarantine(record, result, thread, "receive")
                 return
             self.route(record, ticket, thread, "receive")
+
+    def reporter_key(self, payload):
+        """The reporter's HMAC key and which field it came from, or (None, None) (decision D-018)."""
+        value, source = reputation.identity(payload)
+        if value is None:
+            return None, None
+        if source == "sender_name" and not self.warned_fallback:
+            self.warned_fallback = True
+            log.warning("a reporter's message has no Switch participant id (`sender`); the proof record falls back "
+                        "to the display name (`sender_name`) for this run")
+        return reputation.key_for(value), source
+
+    def count_invalid(self, record):
+        """One strike per ticket at most, for a proof Intake rejected (decision D-018)."""
+        if record.get("counted_invalid"):
+            return
+        contact = store.load_private_json(record["id"], "contact.json")
+        if contact.get("reporter_key"):
+            reputation.add(contact["reporter_key"], contact.get("id_source"), "invalid")
+            record["counted_invalid"] = True
 
     def quarantine(self, record, result, thread, command):
         record["screen_rules"] = sorted({f["rule"] for f in result.findings})
@@ -370,6 +399,8 @@ class Intake:
 
     def route(self, record, ticket, thread, command, actor="intake", by="intake"):
         target = target_for(ticket)
+        if target == "invalid_proof":
+            self.count_invalid(record)  # saved by apply below
         store.apply(record, command, actor, by, target=target)
         if target == "invalid_proof":
             self.intake.post(messages.invalid_proof(record["id"], ticket.poc_problem, record.get("out_of_scope_entry")), thread)
@@ -471,7 +502,8 @@ class Intake:
                 return  # never answer an agent's chatter with help text: two agents could loop
             if not match:
                 self.triage.post("Commands: `escalate R-001 [note]`, `close R-001 [reason=<code>] <note>`, "
-                                 "`override R-001 [note]`, `release R-001`, `notify R-001`, `evidence R-001`, `status`, "
+                                 "`override R-001 [note]`, `release R-001`, `notify R-001`, `clear-reporter <key>`, "
+                                 "`evidence R-001`, `status`, "
                                  "`tally`; from the Skeptic: `concur R-001`, `dispute R-001 <reason_code> [note]` "
                                  "(codes: %s)." % reasons.code_list(), thread)
                 return
@@ -503,6 +535,9 @@ class Intake:
             if verb == "tally":
                 self.triage.post(actions.tally_text(), thread)
                 return
+            if verb == "clear-reporter":
+                self.do_clear_reporter(who, rest, thread)
+                return
             if not ticket_id:
                 self.triage.post("Which ticket? For example `%s %s R-001`." % (self.mention(), verb), thread)
                 return
@@ -519,6 +554,15 @@ class Intake:
                     getattr(self, "do_" + verb)(record, who, rest, thread)
             except states.IllegalTransition as exc:
                 self.triage.post("Refused %s for %s: %s." % (verb, ticket_id, exc), thread)
+
+    def do_clear_reporter(self, who, rest, thread):
+        """`clear-reporter <hmac12>`: a maintainer lifts a reporter's one-open-report limit (decision D-018)."""
+        try:
+            key, _ = reputation.clear(rest.split()[0] if rest.split() else "")
+        except ValueError as exc:
+            self.triage.post("Refused clear-reporter: %s." % exc, thread)
+            return
+        self.triage.post("Reporter %s: limit lifted by %s (invalid count reset to 0)." % (reputation.short(key), who), thread)
 
     def reporter_thread(self, record):
         return store.load_private_json(record["id"], "contact.json").get("intake_thread")

@@ -12,6 +12,7 @@
         [--note TEXT]            internal note; blocks escalation until a human overrides
   override R-001 --by NAME       a maintainer overrides a dispute (humans only)
   cost R-001 --usd X --source S  a maintainer records agent cost from Switch ROI or a dashboard (humans only)
+  clear-reporter KEY             lift a reporter's one-open-report limit (humans only; KEY as Intake printed it)
   tally                          totals for the demo's closing slide
   submit FILE                    create a ticket from a report file, without Switch
   export R-001 [--out DIR]       the ticket's evidence as a folder with a SHA-256 manifest
@@ -23,8 +24,8 @@ skeptic, both set by the agent's own config (agents/reproducer/.claude/settings.
 agents/skeptic/.codex/config.toml). The Reproducer may run check and the
 read-only commands; the Skeptic only the read-only ones, and it records concur /
 dispute by posting them to Intake in #proveit-triage, where Switch vouches for
-the sender. An agent's --by is replaced by its role. override and cost are for
-humans only.
+the sender. An agent's --by is replaced by its role. override, cost and
+clear-reporter are for humans only.
 """
 
 import argparse
@@ -60,7 +61,7 @@ def refuse_for_role(cmd):
     """Why an agent may not run `cmd`, or None. Humans are never refused here."""
     if actor() != "agent":
         return None
-    if cmd in ("override", "cost"):
+    if cmd in ("override", "cost", "clear-reporter"):
         return "only humans may %s; this shell runs as an agent (PROVEIT_ACTOR=agent)" % cmd
     role = agent_role()
     allowed = ROLE_COMMANDS.get(role, READ_ONLY)
@@ -136,6 +137,15 @@ def cmd_cost(args):
     print("%s: agent cost $%.2f recorded (source: %s)" % (record["id"], record["cost"]["usd"], record["cost"]["source"]))
 
 
+def cmd_clear_reporter(args):
+    from . import reputation
+    try:
+        key, _ = reputation.clear(args.key)
+    except ValueError as exc:
+        sys.exit("refused: %s" % exc)
+    print("Reporter %s: limit lifted (invalid count reset to 0)." % reputation.short(key))
+
+
 def cmd_tally(args):
     t = actions.tally()
     if args.json:
@@ -208,6 +218,9 @@ def main(argv=None):
     p = sub.add_parser("cost"); p.add_argument("ticket"); p.add_argument("--usd", type=float, required=True)
     p.add_argument("--source", required=True); p.add_argument("--by", default="maintainer"); p.set_defaults(fn=cmd_cost)
     p = sub.add_parser("tally"); p.add_argument("--json", action="store_true"); p.set_defaults(fn=cmd_tally)
+    p = sub.add_parser("clear-reporter", help="lift a reporter's one-open-report limit (humans only)")
+    p.add_argument("key", help="the reporter key Intake printed (12 or more hex characters)")
+    p.set_defaults(fn=cmd_clear_reporter)
     p = sub.add_parser("submit"); p.add_argument("file"); p.set_defaults(fn=cmd_submit)
     p = sub.add_parser("export"); p.add_argument("ticket", nargs="?"); p.add_argument("--out")
     p.add_argument("--verify", metavar="DIR"); p.set_defaults(fn=cmd_export)

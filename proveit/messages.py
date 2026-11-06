@@ -170,6 +170,22 @@ def decision(record, note=""):
     return "\n\n".join(lines)
 
 
+def limited_reporter(open_tickets):
+    """The reporter's reply when the one-open-report limit applies (decision D-018). Fixed text."""
+    fixable = next((r for r in open_tickets if r["status"] in ("awaiting_poc", "invalid_proof")), None)
+    if fixable:
+        return ("You already have an open report (%s) that is waiting for a valid proof. You can fix it by replying "
+                "in its thread, or post this again once it is closed. A maintainer can lift this limit." % fixable["id"])
+    return ("You already have an open report. Because earlier proofs from you did not reproduce, you can have one "
+            "open report at a time. Please post this again when the open one is closed. A maintainer can lift this limit.")
+
+
+def limited_notice(key12, invalid):
+    """Triage only: who is limited (by a shortened HMAC, never a name) and how to lift it."""
+    return ("Reporter %s is limited to one open report (%d proofs did not reproduce). A maintainer can lift it with: "
+            "python -m proveit clear-reporter %s" % (key12, invalid, key12))
+
+
 def advisory_note(ticket_id):
     """Triage only: where the advisory pack was written (decision D-017)."""
     return ("Advisory pack for %s (DRAFT, needs maintainer review): work/%s/advisory/ osv-draft.json, "

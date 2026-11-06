@@ -88,6 +88,12 @@ SANDBOX_LIMITS = {
 # so an agent's shell cannot lower it.
 CHECK_RUNS = 3
 
+# A reporter whose proofs failed this many times (closed as NOT_REPRODUCED or
+# NOT_RELIABLY_REPRODUCED, or rejected at Intake; at most one per ticket) may
+# have only one open report at a time until a maintainer runs clear-reporter
+# (decision D-018). Never a ban. Not an environment variable.
+INVALID_THRESHOLD = 2
+
 PROOF_CONTRACT = {
     "code_execution": (
         "The payload must make the library itself execute code that creates "

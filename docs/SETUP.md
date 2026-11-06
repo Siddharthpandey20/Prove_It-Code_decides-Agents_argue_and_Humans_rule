@@ -19,6 +19,7 @@ python scripts/rehearse.py                 # the whole demo offline, no Switch
 **Settings** (edit `proveit/config.py`; they are not environment variables, so an agent's shell cannot change them):
 
 - `CHECK_RUNS = 3`: how many times one `check` runs the payload, one after another, each in a new container with the same limits. All runs must agree; if they differ, the check records `NOT_RELIABLY_REPRODUCED`, which a maintainer must override before escalating. On the demo machine, 3 runs add about 1.4 s to a normal check; a payload that hits the 10 s call limit takes about 32 s (`python scripts/time_checks.py` measures it on yours). Verified offline, not yet live.
+- `INVALID_THRESHOLD = 2`: a reporter whose proofs failed this many times may have only one open report at a time. A failure is a ticket closed as `NOT_REPRODUCED` or `NOT_RELIABLY_REPRODUCED`, or a proof Intake rejected, at most one per ticket. A second report gets a fixed reply, its text is not stored, and `#proveit-triage` is told how to lift the limit: `python -m proveit clear-reporter <key>` on the host, or `@prove-it-intake clear-reporter <key>` from a maintainer in the room (agents are refused). The record is `reporters.json` in the private folder, keyed by an HMAC of the reporter's Switch id; deleting the private folder (the DEMO reset) clears it. Verified offline, not yet live.
 
 ## 2. Start a Switch server
 

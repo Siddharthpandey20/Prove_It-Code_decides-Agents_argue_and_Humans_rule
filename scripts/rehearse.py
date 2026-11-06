@@ -3,7 +3,10 @@
 Replays every fixture through the Intake agent's own logic (with stand-in
 rooms that print what would be posted), runs the same `python -m proveit`
 commands the Reproducer and Skeptic run, sends the maintainer's decisions as
-room commands, and prints the tally.
+room commands, and prints the tally. Step 6 then shows the reporter limit on
+purpose: every replay posts as one replay reporter, R-002 and R-003 end as
+NOT_REPRODUCED, so that reporter reaches the threshold; a second open report
+is refused until a maintainer runs clear-reporter (decision D-018).
 
 Two parts are scripted stand-ins, and are labelled so in the output:
   * the Reproducer's and Skeptic's *choices* (which command to run, and
@@ -42,6 +45,10 @@ NOTE_CODES = [
 ]
 
 
+# Every replay posts as one reporter, with a fixed Switch participant id (U3 counts per reporter).
+REPLAY_REPORTER = "@replay-reporter:rehearsal"
+
+
 class Room:
     def __init__(self, name):
         self.name = name
@@ -65,7 +72,7 @@ def proveit(args, work, agent):
 
 def rehearse(work):
     os.environ["PROVEIT_WORK_DIR"] = str(work)
-    from proveit import config, evidence, store
+    from proveit import config, evidence, reputation, store
     from proveit.intake import Intake
     config.WORK_DIR = work
     replays = ROOT / "reports" / "replays"
@@ -78,7 +85,8 @@ def rehearse(work):
         counter["n"] += 1
         mid = "msg-%d" % counter["n"]
         intake.on_intake_event(None, "message", {"payload": {
-            "body": text, "message_id": mid, "thread_id": thread, "sender_name": "replay-reporter", "sender_kind": "user"}})
+            "body": text, "message_id": mid, "thread_id": thread, "sender_name": "replay-reporter",
+            "sender": REPLAY_REPORTER, "sender_kind": "user"}})
         return mid
 
     said = itertools.count(1)
@@ -145,6 +153,18 @@ def rehearse(work):
         ", ".join(sorted(p.name for p in pack.glob("*"))), osv["id"], osv.get("aliases", []),
         osv["affected"][0]["versions"], osv["database_specific"].get("not_reproduced_on", [])))
 
+    print("\n== 6. Reporter limit (decision D-018), shown on purpose")
+    entry = reputation.get(reputation.key_for(REPLAY_REPORTER))
+    print("-- every replay posts as one replay reporter: %d escalated, %d proofs that did not reproduce (R-002, R-003)"
+          % (entry["good"], entry["invalid"]))
+    print("-- replay 02 again: nothing of theirs is open, so it is accepted (and waits for a proof)")
+    reporter((replays / "02-slop-safe-load-rce.md").read_text(encoding="utf-8"))
+    print("-- replay 03 again while that one is open: refused, and its text is not stored")
+    reporter((replays / "03-slop-billion-laughs.md").read_text(encoding="utf-8"))
+    maintainer("@prove-it-intake clear-reporter %s" % reputation.short(reputation.key_for(REPLAY_REPORTER)))
+    print("-- replay 03 again after clear-reporter: accepted")
+    reporter((replays / "03-slop-billion-laughs.md").read_text(encoding="utf-8"))
+
     outcomes = []
     for record in store.all_tickets():
         runs = {r["build"]: r.get("outcome") for r in record.get("runs", [])}
@@ -157,6 +177,9 @@ def rehearse(work):
                          "question": record.get("decision_question"),
                          "advisory": sorted(p.name for p in (work / record["id"] / "advisory").glob("*")),
                          "overridden": bool(record.get("override"))})
+    final = reputation.get(reputation.key_for(REPLAY_REPORTER))
+    outcomes.append({"id": "replay-reporter", "status": "record",
+                     "record": {k: final[k] for k in ("good", "invalid", "id_source")}, "cleared": bool(final["cleared"])})
     return outcomes
 
 
@@ -177,7 +200,8 @@ def main():
         digests.append(hashlib.sha256(text.encode()).hexdigest()[:16])
         print("\nOUTCOMES run %d: %s" % (n + 1, text))
         print("OUTCOMES digest run %d: %s" % (n + 1, digests[-1]))
-    expected = {"R-001": "escalated", "R-002": "closed", "R-003": "closed", "R-004": "quarantined"}
+    expected = {"R-001": "escalated", "R-002": "closed", "R-003": "closed", "R-004": "quarantined",
+                "R-005": "awaiting_poc", "R-006": "in_triage", "replay-reporter": "record"}
     final = {o["id"]: o["status"] for o in outcomes}
     if final != expected:
         sys.exit("REHEARSAL FAILED: expected %s, got %s" % (expected, final))

@@ -64,7 +64,8 @@ class RejectedBeforeAnyRun(WorkDirTest):
             for name, text in self.CASES.items():
                 with self.subTest(name):
                     agent = self.make_intake()
-                    self.report(agent, text)
+                    # One reporter per case: rejections count against a reporter (D-018), tested in test_reputation.
+                    self.report(agent, text, sender="reporter-" + name)
                     from proveit import store
                     record = store.all_tickets()[-1]
                     self.assertEqual(record["status"], "invalid_proof", record)

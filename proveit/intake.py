@@ -28,7 +28,7 @@ import sys
 import threading
 from pathlib import Path
 
-from . import actions, evidence, messages, reports, screen, states, store
+from . import actions, evidence, messages, reasons, reports, screen, states, store
 from .config import LEGACY_STATE_DIR, PROVEIT_HOME, ensure_home
 from .switch_client import Agent, CursorStore, SwitchError, open_to_everyone, register_agent
 
@@ -245,7 +245,7 @@ class Handled:
 
 class Intake:
     VERBS = "escalate|close|release|override|notify|concur|dispute|evidence|status|tally"
-    # A command is the text right after the @mention: "@prove-it-intake dispute R-001 patched build not checked".
+    # A command is the text right after the @mention: "@prove-it-intake dispute R-001 patched_not_checked".
     COMMAND = re.compile(r"[\s:,]*(%s)\b\s*(R-\d{3,})?\s*(.*)" % VERBS, re.I | re.S)
 
     def __init__(self, state, auto_check=False, source="switch", state_dir=None):
@@ -463,9 +463,10 @@ class Intake:
             if not match and self.is_agent(payload):
                 return  # never answer an agent's chatter with help text: two agents could loop
             if not match:
-                self.triage.post("Commands: `escalate R-001 [note]`, `close R-001 <reason>`, `override R-001 [note]`, "
-                                 "`release R-001`, `notify R-001`, `evidence R-001`, `status`, `tally`; "
-                                 "from the Skeptic: `concur R-001`, `dispute R-001 <reason>`.", thread)
+                self.triage.post("Commands: `escalate R-001 [note]`, `close R-001 [reason=<code>] <note>`, "
+                                 "`override R-001 [note]`, `release R-001`, `notify R-001`, `evidence R-001`, `status`, "
+                                 "`tally`; from the Skeptic: `concur R-001`, `dispute R-001 <reason_code> [note]` "
+                                 "(codes: %s)." % reasons.code_list(), thread)
                 return
             verb, ticket_id, rest = match.group(1).lower(), match.group(2), match.group(3).strip()
             human_only = verb in HUMAN_ONLY
@@ -520,10 +521,12 @@ class Intake:
         self.triage.post("%s: %s concurs with the evidence; status %s." % (
             record["id"], who, record["status"].replace("_", " ")), thread)
 
-    def do_dispute(self, record, who, note, thread, actor="agent"):
-        record = actions.dispute(record["id"], note, actor, who)
-        self.triage.post("%s: disputed by %s (%s). Escalation is blocked until a maintainer overrides." % (
-            record["id"], who, record["skeptic"]["reason"]), thread)
+    def do_dispute(self, record, who, rest, thread, actor="agent"):
+        """`dispute R-001 <reason_code> [internal note]` (decision D-013). Nothing here reaches the reporter."""
+        parts = rest.split(None, 1)
+        code, note = (parts + ["", ""])[:2]
+        record = actions.dispute(record["id"], code, actor, who, note)
+        self.triage.post(messages.dispute_recorded(record), thread)
 
     def do_evidence(self, record, who, note, thread):
         self.triage.post("```\n%s\n```" % evidence.text(evidence.pack(record)), thread)
@@ -544,9 +547,15 @@ class Intake:
         self.triage.post("%s escalated by %s. Telling the reporter." % (record["id"], who), thread)
         self.tell_reporter(record["id"], actions.clean_reason(note), thread)
 
-    def do_close(self, record, who, note, thread):
-        record = actions.decide(record["id"], "close", "human", who, note)
-        self.triage.post("%s closed by %s. Telling the reporter." % (record["id"], who), thread)
+    CLOSE_REASON = re.compile(r"^reason=(\S*)\s*(.*)$", re.I | re.S)
+
+    def do_close(self, record, who, rest, thread):
+        """`close R-001 [reason=<code>] <note>`: the code picks the reporter's question (decision D-014)."""
+        match = self.CLOSE_REASON.match(rest)
+        reason, note = (match.group(1), match.group(2)) if match else (None, rest)
+        record = actions.decide(record["id"], "close", "human", who, note, reason=reason)
+        asked = " with the question for %s" % record["decision_question"] if record.get("decision_question") else ""
+        self.triage.post("%s closed by %s. Telling the reporter%s." % (record["id"], who, asked), thread)
         self.tell_reporter(record["id"], actions.clean_reason(note), thread)
 
     def tell_reporter(self, ticket_id, note, thread):

@@ -31,6 +31,17 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 
+# The scripted Skeptic's fixed rule: checklist note -> reason code, first match wins.
+NOTE_CODES = [
+    ("reproduces on the patched build too", "also_on_patched"),
+    ("runs disagreed", "not_clean_reproducible"),
+    ("patched build has not been checked", "patched_not_checked"),
+    ("so it is not a comparison", "patched_not_checked"),
+    ("outcome class does not match", "outcome_mismatch"),
+    ("claimed severity is higher", "severity_overclaimed"),
+]
+
+
 class Room:
     def __init__(self, name):
         self.name = name
@@ -78,11 +89,15 @@ def rehearse(work):
             "body": text, "message_id": "t-%d" % next(said), "thread_id": None, "sender_name": who, "sender_kind": "user"}})
 
     def skeptic(tid):
-        """Scripted stand-in for the Skeptic: dispute if the checklist raises any note, else concur.
-        Like the real one, it reads with the CLI and records its verdict by posting to Intake."""
+        """Scripted stand-in for the Skeptic: dispute with the reason code for the checklist's first
+        note, else concur. Like the real one, it reads with the CLI and records its verdict by posting to Intake."""
         proveit(["evidence", tid], work, agent="skeptic")
         notes = evidence.pack(store.load(tid))["notes"]
-        text = ("@prove-it-intake dispute %s %s" % (tid, "; ".join(notes))) if notes else ("@prove-it-intake concur %s" % tid)
+        code = next((c for phrase, c in NOTE_CODES for note in notes if phrase in note), None)
+        if notes and not code:
+            print("  [prove-it-skeptic] no verdict: the notes have no reason code; a maintainer reads them")
+            return
+        text = ("@prove-it-intake dispute %s %s" % (tid, code)) if code else ("@prove-it-intake concur %s" % tid)
         print("  [prove-it-skeptic in #proveit-triage] " + text)
         intake.on_triage_event(None, "message", {"payload": {
             "body": text, "message_id": "s-" + tid, "thread_id": None, "sender_name": "prove-it-skeptic",
@@ -131,6 +146,8 @@ def rehearse(work):
         outcomes.append({"id": record["id"], "status": record["status"], "vulnerable": runs.get("vulnerable"),
                          "patched": runs.get("patched"), "clean_runs": clean,
                          "skeptic": (record.get("skeptic") or {}).get("verdict"),
+                         "dispute_code": (record.get("skeptic") or {}).get("code"),
+                         "question": record.get("decision_question"),
                          "overridden": bool(record.get("override"))})
     return outcomes
 

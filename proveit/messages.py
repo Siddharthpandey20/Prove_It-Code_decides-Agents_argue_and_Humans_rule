@@ -7,16 +7,11 @@ Triage-facing text contains only fixed fields.
 
 from pathlib import Path
 
-from . import judge, poc, store
+from . import judge, poc, reasons, store
 from .config import ENTRY_POINTS, POC_FORMAT_HELP, PROOF_CONTRACT, TARGET
 from .evidence import latest_run, patched_for
 
-CLAIM_WORDS = {
-    "code_execution": "code execution",
-    "denial_of_service": "denial of service",
-    "crash": "a crash",
-    "info_leak": "an information leak",
-}
+CLAIM_WORDS = reasons.CLAIM_WORDS
 VULN = TARGET["builds"]["vulnerable"]["version"]
 PATCHED = TARGET["builds"]["patched"]["version"]
 
@@ -142,10 +137,28 @@ def decision(record, note=""):
     line = patched_line(record, vulnerable) if vulnerable else None
     if line:
         lines.append(line)
+    if status == "closed" and record.get("decision_question"):
+        # Fixed text from reasons.CODES (decision D-014); never the Skeptic's note or any agent's words.
+        asked = reasons.question(record["decision_question"], record, vulnerable)
+        if asked:
+            lines.append("Question from the maintainers: " + asked)
     if note:
         lines.append("Maintainer's note: " + note)
     lines.append(cost_line(record))
     return "\n\n".join(lines)
+
+
+def dispute_recorded(record):
+    """Triage only: the dispute, its code, what it means, and the Skeptic's internal note."""
+    skeptic = record["skeptic"]
+    text = "%s: disputed by %s (%s: %s). Escalation is blocked until a maintainer overrides." % (
+        record["id"], skeptic["by"], skeptic["code"], reasons.meaning(skeptic["code"]))
+    flag = reasons.MAINTAINER_FLAGS.get(skeptic["code"])
+    if flag:
+        text += " Note for maintainers: %s." % flag.replace("<id>", record["id"])
+    if skeptic.get("note"):
+        text += "\nSkeptic's note (triage only, never sent to the reporter): %s" % skeptic["note"]
+    return text
 
 
 # ---------------------------------------------------------------- triage

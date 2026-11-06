@@ -6,7 +6,7 @@ wherever a command comes from.
 
 import re
 
-from . import judge, sandbox, states, store
+from . import judge, reasons, sandbox, states, store
 from .evidence import current_evidence, is_current, latest_run
 
 
@@ -83,20 +83,36 @@ def _concur(ticket_id, actor, by):
     return record
 
 
-def dispute(ticket_id, reason, actor, by):
+def dispute(ticket_id, code, actor, by, note=""):
     with store.ticket_lock(ticket_id):
-        return _dispute(ticket_id, reason, actor, by)
+        return _dispute(ticket_id, code, actor, by, note)
 
 
-def _dispute(ticket_id, reason, actor, by):
-    reason = clean_reason(reason)
-    if not reason:
-        raise states.IllegalTransition("a dispute needs a reason")
+def latest_patched(record):
+    """The latest patched check on the ticket, whatever entry point it used, or None."""
+    for entry in reversed(record.get("runs", [])):
+        if entry["build"] == "patched":
+            return store.load_run(entry["file"])
+    return None
+
+
+def _dispute(ticket_id, code, actor, by, note=""):
+    """A dispute with exactly one reason code (decision D-013). The note stays in #proveit-triage."""
+    code = (code or "").strip().lower()
+    if code not in reasons.CODES:
+        raise states.IllegalTransition("give one reason code: %s" % reasons.code_list())
     record = store.load(ticket_id)
+    _check_allowed(record, "dispute", actor)
+    problem = reasons.contradiction(code, latest_run(record, "vulnerable"), latest_patched(record))
+    if problem:
+        raise states.IllegalTransition("%s contradicts the recorded evidence (%s)" % (code, problem))
     evidence_now = current_evidence(record)
-    store.apply(record, "dispute", actor, by, reason=reason, evidence=evidence_now)
-    record["skeptic"] = {"verdict": "dispute", "reason": reason, "by": by, "actor": actor, "at": store.now(),
-                         "evidence": evidence_now}
+    note = clean_reason(note)
+    store.apply(record, "dispute", actor, by, code=code, evidence=evidence_now)
+    record["skeptic"] = {"verdict": "dispute", "code": code, "reason": reasons.meaning(code), "note": note,
+                         "by": by, "actor": actor, "at": store.now(), "evidence": evidence_now}
+    # A later dispute replaces the code; every one stays in this list and in the timeline.
+    record.setdefault("disputes", []).append({"code": code, "by": by, "at": record["skeptic"]["at"]})
     store.save(record)
     return record
 
@@ -127,6 +143,9 @@ def _override(ticket_id, actor, by, note=""):
     record["override"] = {"by": by, "at": store.now(), "note": clean_reason(note), "evidence": evidence_now,
                           "cleared": cleared,
                           "after": "dispute" if skeptic.get("verdict") == "dispute" else "no current concur"}
+    if any(item.startswith("dispute") for item in cleared):
+        # An overridden dispute never becomes a reporter question (decision D-014).
+        record["skeptic"]["overridden"] = True
     store.save(record)
     return record
 
@@ -169,19 +188,68 @@ def review_problem(record):
             "without one")
 
 
-def decide(ticket_id, verdict, actor, by, note=""):
+def decide(ticket_id, verdict, actor, by, note="", reason=None):
     with store.ticket_lock(ticket_id):
-        return _decide(ticket_id, verdict, actor, by, note)
+        return _decide(ticket_id, verdict, actor, by, note, reason)
 
 
-def _decide(ticket_id, verdict, actor, by, note=""):
-    """escalate or close."""
+def current_dispute(record):
+    """The Skeptic's dispute if it still stands (not overridden), else None."""
+    skeptic = record.get("skeptic") or {}
+    if skeptic.get("verdict") == "dispute" and not skeptic.get("overridden"):
+        return skeptic
+    return None
+
+
+def close_question(record, requested=None):
+    """Which reason code gives the reporter's question on close (decision D-014), or None.
+
+    1. the code the maintainer passed (`close R-001 reason=<code>`)
+    2. else the latest dispute's code, if it stands and has a reporter question
+    3. else the code the evidence implies: NOT_REPRODUCED -> not_reproduced,
+       NOT_RELIABLY_REPRODUCED -> not_clean_reproducible
+    4. else none
+    """
+    if requested:
+        return requested
+    dispute_ = current_dispute(record)
+    if dispute_ and reasons.has_question(dispute_.get("code")):
+        return dispute_["code"]
+    if record.get("claim") == "info_leak":
+        return None  # the sandbox does not decide information leaks, so the evidence implies no question
+    return reasons.derived(latest_run(record, "vulnerable"))
+
+
+def _decide(ticket_id, verdict, actor, by, note="", reason=None):
+    """escalate or close. A close may name the reason code whose question the reporter gets."""
     record = store.load(ticket_id)
+    _check_allowed(record, verdict, actor)
+    note = clean_reason(note)
     if verdict == "escalate" and record["status"] in states.CHECKED:
         problem = review_problem(record)
         if problem:
             raise states.IllegalTransition("cannot escalate %s yet: %s" % (ticket_id, problem))
-    store.apply(record, verdict, actor, by, note=clean_reason(note))
+    question_code = None
+    if verdict == "close":
+        if reason is not None:
+            reason = reason.strip().lower()
+            if reason not in reasons.CODES:
+                raise states.IllegalTransition("reason= needs one reason code: %s" % reasons.code_list())
+            if not reasons.has_question(reason):
+                raise states.IllegalTransition("%s never gives the reporter a question; close without reason= "
+                                               "or name another code" % reason)
+        dispute_ = current_dispute(record)
+        if dispute_ and dispute_.get("code") == "also_on_patched" and not note:
+            # Humans decide, but a close over a possible new issue must say why, for the record.
+            raise states.IllegalTransition("the patched build also reproduced; add a note saying why you are closing")
+        code = close_question(record, reason)
+        on_patched_too = bool(dispute_) and dispute_.get("code") == "also_on_patched"
+        if code and not on_patched_too and reasons.question(code, record, latest_run(record, "vulnerable")):
+            question_code = code  # never a rejection question over a possible new issue
+    store.apply(record, verdict, actor, by, note=note, **({"question": question_code} if question_code else {}))
+    if verdict == "close":
+        record["decision_question"] = question_code
+        store.save(record)
     return record
 
 

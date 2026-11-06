@@ -100,7 +100,13 @@ def text(p):
     if p.get("skeptic"):
         s = p["skeptic"]
         stale = "" if p["checklist"].get("skeptic_verdict_current") else " (STALE: made on earlier evidence; review again)"
-        lines.append("skeptic: %s by %s%s%s" % (s["verdict"], s["by"], (": " + s["reason"]) if s.get("reason") else "", stale))
+        why = ""
+        if s.get("code"):
+            why = ": %s (%s)" % (s["code"], s.get("reason") or "")
+        elif s.get("reason"):
+            why = ": " + s["reason"]  # a free-text dispute recorded before reason codes
+        lines.append("skeptic: %s by %s%s%s%s" % (s["verdict"], s["by"], why,
+                                                " (overridden)" if s.get("overridden") else "", stale))
     if p.get("override"):
         o = p["override"]
         lines.append("override by %s%s" % (o["by"], "" if o.get("current") else " (made on earlier evidence)"))

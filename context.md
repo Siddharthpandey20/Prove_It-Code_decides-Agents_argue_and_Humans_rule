@@ -54,6 +54,14 @@ The following rules govern all hackathon work:
 
 **As of 2026-11-07, branch `feat/openssf-triage` (not merged):** OpenSSF-aligned triage. Everything on this branch is **verified offline, not yet live**.
 - U1a done: every check runs the payload 3 times, one after another, each in a new container (D-011). Runs that disagree give `NOT_RELIABLY_REPRODUCED`, which needs an override to escalate (D-012). Evidence: `tests/test_repeats.py`, `tests/test_sandbox.py` `Repeats`. Timing on this machine: a normal check takes about 1.3 to 1.4 s longer; a payload that hits the 10 s call limit goes from 10.7 to 31.9 s (`scripts/time_checks.py`).
+- U1b done: a dispute needs exactly one reason code (D-013). Intake refuses a code the evidence contradicts. The reporter gets one fixed question, and only when a maintainer closes the ticket (D-014). Evidence: `tests/test_reasons.py`.
+
+**Merging `feat/openssf-triage` changes live behaviour.** The live Skeptic's current free-text disputes will be refused. Before using it live: paste the new Skeptic instructions from `switch/prove-it.template.yaml` into the Console agent, check the revision log, and do a full live run.
+
+**Needs a live run (branch `feat/openssf-triage`):**
+- The new Skeptic instructions pasted into the Console agent (check the revision log).
+- "3/3 clean runs" in the Reproducer's replies, reason-coded disputes, and Intake refusing a code that contradicts the evidence.
+- The reporter's question on close.
 
 **Next action:** Merge `feat/switch-trust` into `fix/checkpoint-2026-11-05` if the team accepts it.
 - To reset: stop Intake, delete `work/` and the `private` folder (see DEMO), then run `python -m proveit.intake run` in your own terminal.
@@ -90,6 +98,14 @@ These records are authoritative. Keep their IDs and reasons when updating them; 
 - **D-010 — Switch Trust policy: Regex patterns only, Block, User role; no Jailbreak, Secrets, PII or Redact.** Reason: in the live test Jailbreak also blocked report 02's proof, because a proof describes an attack. Redaction would change a payload and its SHA-256. Agents never see reporter text, so the other detectors add nothing. (D-007 to D-009 are recorded in docs/CHECKPOINT.md.) Source: [Trust log](docs/evidence/live-trust-2026-11-06-windows.log), 2026-11-06.
 - **D-011 — Every check runs the payload 3 times, one after another, each in a new container (`CHECK_RUNS` in `proveit/config.py`).** Reason: a single run can be an artefact of the run itself ("Reproduce N times from clean state", proposed in OpenSSF issue #178). The runs are sequential because parallel runs compete for memory and CPU, which would make resource-exhaustion results unreliable. On the demo machine, 3 runs add about 1.3 to 1.4 s to a normal check (under the 15 s limit set for this change); the worst case, a payload that hits the 10 s call limit, takes about 32 s instead of 11 s. The setting is not an environment variable, so an agent cannot lower it. If Docker cannot start a run, the whole check is abandoned and nothing is recorded. Source: `scripts/time_checks.py`, 2026-11-07.
 - **D-012 — If a check's runs disagree, it records `NOT_RELIABLY_REPRODUCED`, and escalation needs a maintainer's override.** Reason: a result that happens only sometimes is not proof, but it is not a clean negative either. A Skeptic's concur is not enough; a person must decide. One override lifts every block on the ticket (a dispute and the disagreeing runs), and the override records what it lifted. Source: `tests/test_repeats.py`, 2026-11-07.
+- **D-013 — A dispute carries exactly one reason code from `proveit/reasons.py`; free-text disputes are refused.** The codes: `not_reproduced`, `not_clean_reproducible`, `also_on_patched`, `out_of_scope_api`, `outcome_mismatch`, `severity_overclaimed`, `version_missing`, `patched_not_checked`. Reason: a shared rejection vocabulary with "the one question that resolves it" (proposed in OpenSSF issue #178; the working group's draft has a templated rejection naming "the specific missing element"). Code decides: Intake refuses `not_reproduced`, `not_clean_reproducible`, `also_on_patched` and `patched_not_checked` when the recorded evidence contradicts them; the other codes are the Skeptic's judgement. The Skeptic's note stays in triage. There is deliberately no fallback for free text, so the live Skeptic needs the new instructions. Source: `tests/test_reasons.py`, 2026-11-07.
+- **D-014 — The reporter gets one fixed question, only when a maintainer closes the ticket.** Order:
+  1. `close R-NNN reason=<code>`;
+  2. else the latest dispute's code, if it still stands (not overridden) and has a question;
+  3. else the code the evidence implies (`NOT_REPRODUCED` gives `not_reproduced`, `NOT_RELIABLY_REPRODUCED` gives `not_clean_reproducible`; never for information-leak claims);
+  4. else no question.
+
+  `also_on_patched` and `patched_not_checked` never produce a question. A maintainer may close a ticket whose standing dispute is `also_on_patched` without an override, but must add a note, and the reporter gets no question. Questions are filled only from closed lists and config. Reason: no agent text ever reaches a reporter, and a question at dispute time would reach reporters before a human decided. Source: `tests/test_reasons.py`, 2026-11-07.
 
 ## Important history and trials
 

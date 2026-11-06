@@ -310,7 +310,7 @@ class Canary(WorkDirTest):
                    self.cli("evidence", tid), self.cli("evidence", tid, "--json"), self.cli("show", tid),
                    self.cli("list"), self.cli("tally"), self.cli("tally", "--json"),
                    self.cli("evidence", tid, role="skeptic")]
-        self.say(agent, "@prove-it-intake dispute %s testing" % tid, sender="prove-it-skeptic", kind="agent")
+        self.say(agent, "@prove-it-intake dispute %s outcome_mismatch testing" % tid, sender="prove-it-skeptic", kind="agent")
         record = store.load(tid)
         run = store.load_run(record["runs"][0]["file"])
         self.assertEqual(run["exception_type"], "ConstructorError", "the canary must have reached an exception message")

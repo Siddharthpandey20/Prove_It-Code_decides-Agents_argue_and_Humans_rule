@@ -129,18 +129,41 @@ agents:
          it; Switch tells Intake the message came from you, so nobody else can
          record a verdict in your name:
          @prove-it-intake concur <id>
-         @prove-it-intake dispute <id> <one line: which item failed and why>
+         @prove-it-intake dispute <id> <reason_code> [short internal note]
+         A dispute needs exactly ONE of these reason codes; Intake refuses a
+         dispute with no code, an unknown code, or a code the recorded
+         evidence contradicts:
+           not_reproduced          did not reproduce on the vulnerable build
+           not_clean_reproducible  the runs disagreed (NOT_RELIABLY_REPRODUCED)
+           also_on_patched         also reproduces on the patched build
+                                   (possible new issue)
+           out_of_scope_api        uses an API PyYAML documents as unsafe
+                                   (docs/policy/pyyaml-scope.md)
+           outcome_mismatch        the outcome class does not match the claim
+           severity_overclaimed    the claimed severity is not supported
+           version_missing         the affected version is not stated
+           patched_not_checked     the patched build has not been checked
+         The note stays in this room; it is never sent to the reporter.
          Your verdict is on the result the sandbox recorded (the ticket's
          status), not on whether the reporter was right:
          - A reproduced result (CODE_EXECUTION, CRASH, RESOURCE_EXHAUSTION):
-           concur only if items a to e all hold. Dispute when any fails, or
-           when the patched build has not been checked or was checked with a
-           different loader.
+           concur only if items a to e all hold. If the patched build has not
+           been checked, dispute with patched_not_checked; if it was checked
+           with a different loader, also patched_not_checked; if it reproduces
+           there too, also_on_patched; if b or e fails, outcome_mismatch or
+           severity_overclaimed.
          - A NOT_REPRODUCED result: item b is False by definition and the
            patched build does not matter, since nothing reproduced. Concur
            when the run is sound: the entry point is allowlisted and is the
            one the ticket declares, and claim_decidable_by_sandbox is True.
            Dispute only if one of those fails.
+         - Runs that disagreed (NOT_RELIABLY_REPRODUCED, "runs disagreed: see
+           each run" with one line per run): the evidence shows the split.
+           Usually dispute with not_clean_reproducible; concur only to accept
+           the split as recorded. Either way a maintainer must override before
+           it can be escalated.
+         Every check runs the payload several times in fresh containers;
+         vulnerable_clean_runs says how many agreed (for example 3/3).
          A dispute blocks escalation until a maintainer overrides it, so a
          human always looks at what you raised. A new check makes your
          verdict stale; review again when asked.
@@ -187,12 +210,12 @@ rooms:
          explains the evidence.
       2. @prove-it-skeptic reads `python -m proveit evidence <id>`, works
          through its checklist, and ends with `@prove-it-intake concur <id>`
-         or `@prove-it-intake dispute <id> <reason>`, which Intake records.
+         or `@prove-it-intake dispute <id> <reason_code> [note]`, which Intake records.
       3. A maintainer may steer: ask the Reproducer for the patched build
          (`check <id> --build patched`), another allowlisted loader, or the
          evidence pack.
       4. A maintainer decides, addressed to Intake: `escalate <id> [note]`
-         (needs a current concur, or an override), `close <id> <reason>`, or
+         (needs a current concur, or an override), `close <id> [reason=<code>] <note>`, or
          `override <id> [note]`. Only the maintainers listed in Intake's
          settings may decide. Intake tells the reporter in their thread.
 

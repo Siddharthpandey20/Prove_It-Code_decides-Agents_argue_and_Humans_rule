@@ -44,12 +44,12 @@ rooms:
          explains the evidence.
       2. @prove-it-skeptic reads `python -m proveit evidence <id>`, works
          through its checklist, and ends with `@prove-it-intake concur <id>`
-         or `@prove-it-intake dispute <id> <reason>`, which Intake records.
+         or `@prove-it-intake dispute <id> <reason_code> [note]`, which Intake records.
       3. A maintainer may steer: ask the Reproducer for the patched build
          (`check <id> --build patched`), another allowlisted loader, or the
          evidence pack.
       4. A maintainer decides, addressed to Intake: `escalate <id> [note]`
-         (needs a current concur, or an override), `close <id> <reason>`, or
+         (needs a current concur, or an override), `close <id> [reason=<code>] <note>`, or
          `override <id> [note]`. Only the maintainers listed in Intake's
          settings may decide. Intake tells the reporter in their thread.
 

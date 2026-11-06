@@ -28,7 +28,7 @@ without knowing where you cloned the repository. Older versions kept these in
 | Action | Who | How |
 | --- | --- | --- |
 | Run a payload (`check`) | Reproducer | its shell, `python -m proveit check R-001` |
-| Concur / dispute | Skeptic | a message in `#proveit-triage`: `@prove-it-intake concur R-001` or `@prove-it-intake dispute R-001 <reason>`. Switch tells Intake who sent it; Intake records it only from `prove-it-skeptic` (or a maintainer). The Skeptic's shell is read-only. |
+| Concur / dispute | Skeptic | a message in `#proveit-triage`: `@prove-it-intake concur R-001` or `@prove-it-intake dispute R-001 <reason_code> [note]` (one code from `proveit/reasons.py`). Switch tells Intake who sent it; Intake records it only from `prove-it-skeptic` (or a maintainer). The Skeptic's shell is read-only. |
 | Escalate, close, override, release | Maintainers listed in Intake's settings | `@prove-it-intake escalate R-001`, ... (`python -m proveit.intake maintainers add <name>`) |
 
 `PROVEIT_AGENT` gives each agent its role in the CLI, and an agent's `--by` is

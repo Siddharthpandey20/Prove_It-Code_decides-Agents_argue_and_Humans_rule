@@ -8,7 +8,8 @@
   show R-001                     the ticket record
   list                           tickets and their status
   concur R-001                   the Skeptic could not disprove the evidence
-  dispute R-001 --reason TEXT    the Skeptic disputes it; blocks escalation until a human overrides
+  dispute R-001 --code CODE      a dispute with one reason code (see proveit/reasons.py) and an optional
+        [--note TEXT]            internal note; blocks escalation until a human overrides
   override R-001 --by NAME       a maintainer overrides a dispute (humans only)
   cost R-001 --usd X --source S  a maintainer records agent cost from Switch ROI or a dashboard (humans only)
   tally                          totals for the demo's closing slide
@@ -31,7 +32,7 @@ import json
 import os
 import sys
 
-from . import actions, evidence, judge, reports, sandbox, screen, states, store
+from . import actions, evidence, judge, reasons, reports, sandbox, screen, states, store
 from .config import ENTRY_POINTS, TARGET
 
 
@@ -67,7 +68,7 @@ def refuse_for_role(cmd):
         return None
     if cmd in ("concur", "dispute"):
         return ("agents record verdicts in #proveit-triage, not here: post `@prove-it-intake %s R-001%s` "
-                "(Intake accepts it only from the Skeptic)" % (cmd, " <reason>" if cmd == "dispute" else ""))
+                "(Intake accepts it only from the Skeptic)" % (cmd, " <reason_code> [note]" if cmd == "dispute" else ""))
     if role is None:
         return ("this agent has no role (PROVEIT_AGENT is not reproducer or skeptic), so it may only read: %s"
                 % ", ".join(sorted(READ_ONLY)))
@@ -120,8 +121,9 @@ def cmd_concur(args):
 
 
 def cmd_dispute(args):
-    record = actions.dispute(args.ticket, args.reason, actor(), args.by)
-    print("%s: disputed by %s; escalation is blocked until a maintainer overrides" % (record["id"], args.by))
+    record = actions.dispute(args.ticket, args.code, actor(), args.by, args.note or "")
+    print("%s: disputed by %s (%s); escalation is blocked until a maintainer overrides" % (
+        record["id"], args.by, record["skeptic"]["code"]))
 
 
 def cmd_override(args):
@@ -197,7 +199,9 @@ def main(argv=None):
     p = sub.add_parser("show"); p.add_argument("ticket"); p.set_defaults(fn=cmd_show)
     sub.add_parser("list").set_defaults(fn=cmd_list)
     p = sub.add_parser("concur"); p.add_argument("ticket"); p.add_argument("--by", default="skeptic"); p.set_defaults(fn=cmd_concur)
-    p = sub.add_parser("dispute"); p.add_argument("ticket"); p.add_argument("--reason", required=True)
+    p = sub.add_parser("dispute"); p.add_argument("ticket")
+    p.add_argument("--code", required=True, choices=reasons.ORDER, help="exactly one reason code")
+    p.add_argument("--note", help="internal note: stays in triage, never sent to the reporter")
     p.add_argument("--by", default="skeptic"); p.set_defaults(fn=cmd_dispute)
     p = sub.add_parser("override"); p.add_argument("ticket"); p.add_argument("--by", required=True)
     p.add_argument("--note"); p.set_defaults(fn=cmd_override)

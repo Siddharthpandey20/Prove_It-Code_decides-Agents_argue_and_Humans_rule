@@ -171,7 +171,7 @@ class RoomCommands(WorkDirTest):
         tid = self.ticket_in_triage(agent)
         with stub_runs("CODE_EXECUTION"):
             actions.check(tid, actor="agent", by="reproducer")
-        actions.dispute(tid, "patched build not yet checked", actor="agent", by="skeptic")
+        actions.dispute(tid, "patched_not_checked", actor="agent", by="skeptic")
         self.assertEqual(store.load(tid)["status"], "disputed")
         self.say(agent, "@prove-it-intake escalate %s" % tid)
         self.assertEqual(store.load(tid)["status"], "disputed")

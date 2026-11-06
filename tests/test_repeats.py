@@ -204,7 +204,7 @@ class Blocks(Base):
 
     def test_one_override_clears_dispute_and_unreliable_and_records_both(self):
         tid = self.unreliable()
-        self.say(self.agent, "@prove-it-intake dispute %s runs disagreed" % tid, sender="prove-it-skeptic", kind="agent")
+        self.say(self.agent, "@prove-it-intake dispute %s not_clean_reproducible" % tid, sender="prove-it-skeptic", kind="agent")
         self.assertEqual(store.load(tid)["status"], "disputed")
         self.say(self.agent, "@prove-it-intake override %s checked each run" % tid)
         record = store.load(tid)

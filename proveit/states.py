@@ -33,6 +33,7 @@ TABLE = [
     ("check_patched", CHECKED | {"disputed"}, {SAME}, {"agent", "human", "intake"}),
     ("concur", CHECKED, {SAME}, {"agent", "human"}),
     ("dispute", CHECKED, {"disputed"}, {"agent", "human"}),
+    ("dispute", {"disputed"}, {SAME}, {"agent", "human"}),  # a later dispute replaces the reason code
     # After a dispute it clears it; on a checked ticket with no current concur it lets a maintainer escalate anyway.
     ("override", {"disputed"}, CHECK_RESULTS, {"human"}),
     ("override", CHECKED, {SAME}, {"human"}),

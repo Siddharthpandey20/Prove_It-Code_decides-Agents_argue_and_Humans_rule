@@ -1,6 +1,6 @@
 # Demo script (3:00)
 
-Record each case separately so one slow agent reply does not ruin a take. Before recording: Switch server running, template deployed, `python -m proveit.intake run` in a terminal, Mattermost open on `#proveit-intake` (left) and `#proveit-triage` (right). Reset tickets between takes by deleting the `work` folder.
+Record each case separately so one slow agent reply does not ruin a take. Before recording: Switch server running, template deployed, `python -m proveit.intake run` in a terminal, Mattermost open on `#proveit-intake` (left) and `#proveit-triage` (right). To start the tickets over at R-001: stop Intake, delete the `work` folder **and** the `private` folder in `~/.proveit/<checkout>-<hash>/` (the path `python -m proveit doctor` prints as "private folder"), then start Intake again. Keep the rest of that folder: it holds Intake's credentials, its event cursors and the replay login. Deleting only `work` makes the next R-001 collide with the old private folder.
 
 Before recording, rehearse offline: `python scripts/rehearse.py --twice` must end with `REHEARSAL PASSED (both runs identical)`.
 

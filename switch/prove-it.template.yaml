@@ -125,8 +125,8 @@ agents:
             `check <id> --build patched`.
          e. Does the claimed severity match the outcome class?
             (severity_supported_by_outcome)
-         f. Is the report within the room's scope-policy doc
-            (docs/policy/pyyaml-scope.md)? If not, out_of_scope_api.
+         f. Is the report within this room's scope-policy doc? If not,
+            out_of_scope_api.
       3. End your message with exactly one of these two lines. Intake records
          it; Switch tells Intake the message came from you, so nobody else can
          record a verdict in your name:
@@ -139,8 +139,8 @@ agents:
            not_clean_reproducible  the runs disagreed (NOT_RELIABLY_REPRODUCED)
            also_on_patched         also reproduces on the patched build
                                    (possible new issue)
-           out_of_scope_api        uses an API PyYAML documents as unsafe
-                                   (docs/policy/pyyaml-scope.md)
+           out_of_scope_api        uses an API the library documents as unsafe
+                                   (this room's scope-policy doc)
            outcome_mismatch        the outcome class does not match the claim
            severity_overclaimed    the claimed severity is not supported
            version_missing         the affected version is not stated

@@ -20,6 +20,7 @@ triage a ticket with no reporter text in it.
 """
 
 import argparse
+import functools
 import json
 import logging
 import os
@@ -288,6 +289,7 @@ class Intake:
         # target key -> (intake_room, triage_room). Filled by start() (C3) or by the
         # library-2 rehearsal; the default PyYAML pair is self.intake / self.triage.
         self.pairs = {}
+        self._reply = None   # the triage room the current command came from (set per command)
 
     # -- helpers -------------------------------------------------------------
     def pair(self, target):
@@ -343,6 +345,41 @@ class Intake:
         if not self.triage.ready.wait(20):
             sys.exit("Could not open the event stream for room %s" % triage_id)
         log.info("Intake is listening in #%s and the room it links to as %r", self.state["intake_room"], TRIAGE_LINK_LABEL)
+        self.pairs[targets.DEFAULT_KEY] = (self.intake, self.triage)
+        self.start_extra_targets()
+
+    def start_extra_targets(self):
+        """Also serve any registered non-default target whose rooms exist (U4, C3).
+
+        Each extra room pair's callbacks are bound to its target, so a report's
+        target comes only from the room it arrived in. A target whose intake room
+        is absent is skipped with one warning -- PyYAML keeps working (the live
+        fallback): the sqlparse rooms are deployed from a separate template, so a
+        Console that has only the main template serves PyYAML alone.
+        """
+        for target in targets.TARGETS.values():
+            if target.key == targets.DEFAULT_KEY:
+                continue
+            extra_intake_id = self.agent.room_id(target.intake_room)
+            if not extra_intake_id:
+                log.warning("room #%s for target %s not found; not serving it (PyYAML is unaffected). Deploy "
+                            "switch/prove-it.%s.rooms.template.yaml to enable it.",
+                            target.intake_room, target.key, target.key)
+                continue
+            intake_conn = self.agent.connect(extra_intake_id, functools.partial(self.on_intake_event, target=target),
+                                             cursors=self.cursors, failed_log=self.failed_log)
+            if not intake_conn.ready.wait(20):
+                sys.exit("Could not open the event stream for room %s" % extra_intake_id)
+            extra_triage_id = self.linked_room(intake_conn, TRIAGE_LINK_LABEL)
+            if not extra_triage_id:
+                sys.exit("#%s has no Switch room link labelled %r, so Intake cannot serve target %s."
+                         % (target.intake_room, TRIAGE_LINK_LABEL, target.key))
+            triage_conn = self.agent.connect(extra_triage_id, functools.partial(self.on_triage_event, target=target),
+                                             cursors=self.cursors, failed_log=self.failed_log)
+            if not triage_conn.ready.wait(20):
+                sys.exit("Could not open the event stream for room %s" % extra_triage_id)
+            self.pairs[target.key] = (intake_conn, triage_conn)
+            log.info("Also serving target %s in #%s and its linked triage room", target.key, target.intake_room)
 
     # -- #proveit-intake -----------------------------------------------------
     def on_intake_event(self, conn, kind, frame, target=None):
@@ -493,15 +530,16 @@ class Intake:
 
     def run_auto_check(self, ticket_id):
         """Developer/test mode only: Intake runs the vulnerable-build check itself, labelled as such."""
+        triage_room = self.pair(targets.for_record(store.load(ticket_id)))[1]
         try:
             record, run, _ = actions.check(ticket_id, "vulnerable", actor="intake", by="intake (auto-check)")
-            self.triage.post(messages.auto_check(record, run))
+            triage_room.post(messages.auto_check(record, run))
         except Exception as exc:
             log.exception("auto-check failed")
-            self.triage.post("Automatic check for %s failed: %s" % (ticket_id, type(exc).__name__))
+            triage_room.post("Automatic check for %s failed: %s" % (ticket_id, type(exc).__name__))
 
     # -- #proveit-triage -----------------------------------------------------
-    def on_triage_event(self, conn, kind, frame):
+    def on_triage_event(self, conn, kind, frame, target=None):
         if kind != "message":
             return
         payload = frame["payload"]
@@ -513,7 +551,7 @@ class Intake:
         if payload.get("message_id") in self.handled:
             log.info("message %s already handled; ignoring the repeat", payload.get("message_id"))
             return
-        self.handle_command(payload)
+        self.handle_command(payload, target)
         self.handled.add(payload.get("message_id"))
 
     def parse_command(self, body):
@@ -528,16 +566,21 @@ class Intake:
     def is_skeptic(self, payload):
         return self.is_agent(payload) and payload.get("sender_name", "").lstrip("@").lower() in self.skeptic_names
 
-    def handle_command(self, payload):
+    def handle_command(self, payload, cmd_target=None):
         body, thread = payload.get("body", ""), payload.get("thread_id")
         match = self.parse_command(body)
         log.info("triage command from %r (kind %s): %s", payload.get("sender_name"), payload.get("sender_kind"),
                  match.group(1).lower() if match else "none")
         with self.lock:
+            # Replies go to the triage room the command came from. A ticket is found by
+            # id regardless of room, so a maintainer can decide a ticket from either
+            # triage room (humans rule, decision D-022); the reporter is always told in
+            # the ticket's own intake room (tell_reporter).
+            self._reply = self.pair(cmd_target)[1]
             if not match and self.is_agent(payload):
                 return  # never answer an agent's chatter with help text: two agents could loop
             if not match:
-                self.triage.post("Commands: `escalate R-001 [note]`, `close R-001 [reason=<code>] <note>`, "
+                self._reply.post("Commands: `escalate R-001 [note]`, `close R-001 [reason=<code>] <note>`, "
                                  "`override R-001 [note]`, `release R-001`, `notify R-001`, `clear-reporter <key>`, "
                                  "`evidence R-001`, `status`, "
                                  "`tally`; from the Skeptic: `concur R-001`, `dispute R-001 <reason_code> [note]` "
@@ -548,39 +591,39 @@ class Intake:
             who = payload.get("sender_name", "")
             if verb in VERDICTS and not (self.is_skeptic(payload) or (not self.is_agent(payload) and self.is_maintainer(who))):
                 # Switch tells Intake who sent a message, so only the real Skeptic (or a maintainer) records a verdict.
-                self.triage.post("Refused: only @%s or a maintainer records a verdict (%s), and @%s is neither."
+                self._reply.post("Refused: only @%s or a maintainer records a verdict (%s), and @%s is neither."
                                  % (self.state.get("skeptic", "prove-it-skeptic"), verb, who or "?"), thread)
                 return
             if human_only and self.is_agent(payload):
                 # Only people decide; agents' opinions stay opinions.
-                self.triage.post("Refused: only maintainers can %s a ticket, and that request came from an agent." % verb, thread)
+                self._reply.post("Refused: only maintainers can %s a ticket, and that request came from an agent." % verb, thread)
                 return
             if human_only and not self.is_maintainer(who):
                 # Being in the room is not enough: only the maintainers listed in Intake's settings decide.
                 if self.maintainers:
-                    self.triage.post("Refused: only Prove It's maintainers can %s a ticket, and @%s is not one of them. "
+                    self._reply.post("Refused: only Prove It's maintainers can %s a ticket, and @%s is not one of them. "
                                      "A maintainer can add you on the host: `python -m proveit.intake maintainers add %s`."
                                      % (verb, who or "?", who or "<name>"), thread)
                 else:
-                    self.triage.post("Refused: no maintainers are configured, so nobody can %s yet. On the host run "
+                    self._reply.post("Refused: no maintainers are configured, so nobody can %s yet. On the host run "
                                      "`python -m proveit.intake maintainers add <your Mattermost username>`." % verb, thread)
                 return
             if verb == "status":
-                self.triage.post(self.status_text(), thread)
+                self._reply.post(self.status_text(), thread)
                 return
             if verb == "tally":
-                self.triage.post(actions.tally_text(), thread)
+                self._reply.post(actions.tally_text(), thread)
                 return
             if verb == "clear-reporter":
                 self.do_clear_reporter(who, rest, thread)
                 return
             if not ticket_id:
-                self.triage.post("Which ticket? For example `%s %s R-001`." % (self.mention(), verb), thread)
+                self._reply.post("Which ticket? For example `%s %s R-001`." % (self.mention(), verb), thread)
                 return
             try:
                 record = store.load(ticket_id)
             except FileNotFoundError:
-                self.triage.post("There is no ticket %s." % ticket_id, thread)
+                self._reply.post("There is no ticket %s." % ticket_id, thread)
                 return
             try:
                 if verb in VERDICTS:
@@ -589,23 +632,23 @@ class Intake:
                 else:
                     getattr(self, "do_" + verb)(record, who, rest, thread)
             except states.IllegalTransition as exc:
-                self.triage.post("Refused %s for %s: %s." % (verb, ticket_id, exc), thread)
+                self._reply.post("Refused %s for %s: %s." % (verb, ticket_id, exc), thread)
 
     def do_clear_reporter(self, who, rest, thread):
         """`clear-reporter <hmac12>`: a maintainer lifts a reporter's one-open-report limit (decision D-018)."""
         try:
             key, _ = reputation.clear(rest.split()[0] if rest.split() else "")
         except ValueError as exc:
-            self.triage.post("Refused clear-reporter: %s." % exc, thread)
+            self._reply.post("Refused clear-reporter: %s." % exc, thread)
             return
-        self.triage.post("Reporter %s: limit lifted by %s (invalid count reset to 0)." % (reputation.short(key), who), thread)
+        self._reply.post("Reporter %s: limit lifted by %s (invalid count reset to 0)." % (reputation.short(key), who), thread)
 
     def reporter_thread(self, record):
         return store.load_private_json(record["id"], "contact.json").get("intake_thread")
 
     def do_concur(self, record, who, note, thread, actor="agent"):
         record = actions.concur(record["id"], actor, who)
-        self.triage.post("%s: %s concurs with the evidence; status %s." % (
+        self._reply.post("%s: %s concurs with the evidence; status %s." % (
             record["id"], who, record["status"].replace("_", " ")), thread)
 
     def do_dispute(self, record, who, rest, thread, actor="agent"):
@@ -613,27 +656,27 @@ class Intake:
         parts = rest.split(None, 1)
         code, note = (parts + ["", ""])[:2]
         record = actions.dispute(record["id"], code, actor, who, note)
-        self.triage.post(messages.dispute_recorded(record), thread)
+        self._reply.post(messages.dispute_recorded(record), thread)
 
     def do_evidence(self, record, who, note, thread):
-        self.triage.post("```\n%s\n```" % evidence.text(evidence.pack(record)), thread)
+        self._reply.post("```\n%s\n```" % evidence.text(evidence.pack(record)), thread)
 
     def do_release(self, record, who, note, thread):
         with store.ticket_lock(record["id"]):
             record = store.load(record["id"])
             ticket = ticket_from_record(record)
             self.route(record, ticket, self.reporter_thread(record), "release", actor="human", by=who)
-        self.triage.post("%s released by %s; it is now %s." % (record["id"], who, store.load(record["id"])["status"].replace("_", " ")), thread)
+        self._reply.post("%s released by %s; it is now %s." % (record["id"], who, store.load(record["id"])["status"].replace("_", " ")), thread)
 
     def do_override(self, record, who, note, thread):
         record = actions.override(record["id"], "human", who, note)
-        self.triage.post(actions.override_text(record), thread)
+        self._reply.post(actions.override_text(record), thread)
 
     def do_escalate(self, record, who, note, thread):
         record = actions.decide(record["id"], "escalate", "human", who, note)
-        self.triage.post("%s escalated by %s. Telling the reporter." % (record["id"], who), thread)
+        self._reply.post("%s escalated by %s. Telling the reporter." % (record["id"], who), thread)
         self.tell_reporter(record["id"], actions.clean_reason(note), thread)
-        self.triage.post(messages.advisory_note(record["id"]), thread)
+        self._reply.post(messages.advisory_note(record["id"]), thread)
 
     CLOSE_REASON = re.compile(r"^reason=(\S*)\s*(.*)$", re.I | re.S)
 
@@ -643,7 +686,7 @@ class Intake:
         reason, note = (match.group(1), match.group(2)) if match else (None, rest)
         record = actions.decide(record["id"], "close", "human", who, note, reason=reason)
         asked = " with the question for %s" % record["decision_question"] if record.get("decision_question") else ""
-        self.triage.post("%s closed by %s. Telling the reporter%s." % (record["id"], who, asked), thread)
+        self._reply.post("%s closed by %s. Telling the reporter%s." % (record["id"], who, asked), thread)
         self.tell_reporter(record["id"], actions.clean_reason(note), thread)
 
     def tell_reporter(self, ticket_id, note, thread):
@@ -656,14 +699,16 @@ class Intake:
             record = store.load(ticket_id)
             if note:
                 record["decision_note"] = note
+            # Always the ticket's own intake room, even if the command came from the other triage room.
+            reporter_intake = self.pair(targets.for_record(record))[0]
             try:
-                self.intake.post(messages.decision(record, record.get("decision_note", "")), self.reporter_thread(record))
+                reporter_intake.post(messages.decision(record, record.get("decision_note", "")), self.reporter_thread(record))
             except Exception as exc:
                 record["notified"] = False
                 store.event(record, "notify_failed", "intake", error=type(exc).__name__)
                 store.save(record)
                 log.exception("could not tell the reporter about %s", ticket_id)
-                self.triage.post("%s: the decision is recorded, but telling the reporter failed (%s). Resend it with "
+                self._reply.post("%s: the decision is recorded, but telling the reporter failed (%s). Resend it with "
                                  "`%s notify %s`." % (ticket_id, type(exc).__name__, self.mention(), ticket_id), thread)
                 return False
             record["notified"] = True
@@ -677,7 +722,7 @@ class Intake:
                 record["id"], record["status"].replace("_", " ")))
         again = record.get("notified") is True
         if self.tell_reporter(record["id"], "", thread):
-            self.triage.post("%s: the decision was sent to the reporter%s." % (record["id"], " again" if again else ""), thread)
+            self._reply.post("%s: the decision was sent to the reporter%s." % (record["id"], " again" if again else ""), thread)
 
     @staticmethod
     def status_text():

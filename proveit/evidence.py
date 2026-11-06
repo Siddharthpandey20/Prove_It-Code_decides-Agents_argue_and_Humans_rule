@@ -4,7 +4,7 @@ from . import judge, store
 from .config import TARGET
 
 TICKET_FIELDS = ("id", "status", "claim", "severity", "entry_point", "payload_sha256", "payload_bytes", "tags",
-                 "poc_problem", "missing", "screen_rules")
+                 "poc_problem", "missing", "screen_rules", "affected_version", "tested_version")
 
 
 def latest_entry(record, build):
@@ -82,7 +82,9 @@ def text(p):
              "claim %s | claimed severity %s | entry point %s | payload sha256 %s (%s bytes)" % (
                  t.get("claim") or "-", t.get("severity") or "-", t.get("entry_point") or "-",
                  (t.get("payload_sha256") or "-")[:16], t.get("payload_bytes")),
-             "tags: %s" % (", ".join(t.get("tags") or []) or "none")]
+             "tags: %s" % (", ".join(t.get("tags") or []) or "none"),
+             "affected version: reported %s, tested %s" % (t.get("affected_version") or "not stated",
+                                                          p["target"].get("vulnerable"))]
     for key in ("vulnerable_run", "patched_run"):
         run = p[key]
         if run:

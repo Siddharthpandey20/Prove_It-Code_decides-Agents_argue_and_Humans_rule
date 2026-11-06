@@ -272,10 +272,13 @@ class Repeats(WorkDirTest):
 CANARY = "Zq9CANARYx"
 CANARY_REPORT = """Title: {c} title {c}
 Severity: critical
+Affected version: 5.3.1
 Entry point: yaml.full_load
 Claimed impact: arbitrary code execution {c} in the impact line
 
 Body text {c} that explains nothing.
+expected: nothing happens to {c}
+actual: {c} happens instead
 
 ```yaml
 # comment {c}

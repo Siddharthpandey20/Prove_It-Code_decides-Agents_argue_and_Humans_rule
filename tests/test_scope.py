@@ -9,7 +9,7 @@ CANARY = "Wq3CANARYv"
 
 
 def report(entry):
-    return ("Title: t\nSeverity: critical\nEntry point: %s\nClaimed impact: arbitrary code execution\n\n"
+    return ("Title: t\nSeverity: critical\nAffected version: 5.3.1\nEntry point: %s\nClaimed impact: arbitrary code execution\n\n"
             "```yaml\n!!python/object/apply:os.system [\"true\"]\n```\n" % entry)
 
 

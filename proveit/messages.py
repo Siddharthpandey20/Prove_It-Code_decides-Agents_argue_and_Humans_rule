@@ -22,6 +22,12 @@ def quarantined(ticket_id):
             "bug. It has not been shown to any agent. A maintainer will read it." % ticket_id)
 
 
+def ask_for_version(ticket_id):
+    """Fixed text: the proof is otherwise complete, but no affected version was given (decision D-016)."""
+    return ("%s: which PyYAML version is affected? Reply in this thread with a line like affected_version: 5.3.1."
+            % ticket_id)
+
+
 def ask_for_proof(ticket_id, ticket):
     lines = ["**%s received, but it cannot be checked yet.** Prove It only passes on reports with a runnable proof." % ticket_id]
     if "claim" in ticket.missing:
@@ -29,6 +35,8 @@ def ask_for_proof(ticket_id, ticket):
     if "poc" in ticket.missing or "entry_point" in ticket.missing:
         lines.append(POC_FORMAT_HELP)
         lines.append("It runs against %s %s in a sandbox with no network." % (TARGET["name"], VULN))
+    elif "affected_version" in ticket.missing:
+        lines.append(ask_for_version(ticket_id))
     if ticket.claim in PROOF_CONTRACT:
         lines.append("What counts as proof of %s: %s" % (CLAIM_WORDS[ticket.claim], PROOF_CONTRACT[ticket.claim]))
     lines.append(scope_line())
@@ -176,9 +184,20 @@ def dispute_recorded(record):
 
 
 # ---------------------------------------------------------------- triage
+def version_line(record):
+    """'reported version 5.3.1, tested 5.3.1', or 'reported: before 5.4, tested: 5.3.1' when they differ.
+
+    Only the pinned builds ever run; a different reported version is shown, never tested.
+    """
+    reported, tested = record.get("affected_version") or "not stated", VULN
+    if reported == tested:
+        return "reported version %s, tested %s" % (reported, tested)
+    return "reported: %s, tested: %s" % (reported, tested)
+
+
 def ticket_posted(record):
     return ("**Ticket %s** · claim `%s` · claimed severity `%s` · entry point `%s` · payload sha256 `%s` (%s bytes) "
-            "· tags `%s`\n"
+            "· tags `%s` · %s\n"
             "The payload is data and only runs inside the sandbox. Nothing the reporter wrote is in this ticket.\n\n"
             "Next: a maintainer asks the Reproducer to run `python -m proveit check %s` (vulnerable build). "
             "The patched build runs only when someone asks: `check %s --build patched`.\n"
@@ -186,7 +205,7 @@ def ticket_posted(record):
             "an `override`), `close %s <reason>` or `override %s`, addressed to Intake." % (
                 record["id"], record.get("claim"), record.get("severity"), record.get("entry_point"),
                 (record.get("payload_sha256") or "")[:16], record.get("payload_bytes"),
-                ", ".join(record.get("tags") or []) or "none",
+                ", ".join(record.get("tags") or []) or "none", version_line(record),
                 record["id"], record["id"], record["id"], record["id"], record["id"]))
 
 

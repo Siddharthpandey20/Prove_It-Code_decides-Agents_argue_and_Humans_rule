@@ -8,6 +8,7 @@ only the sandbox reads it. No title, no reporter name, no excerpt.
 """
 
 import re
+import textwrap
 from dataclasses import asdict, dataclass, field
 
 from . import poc
@@ -22,7 +23,23 @@ CLAIM_KEYWORDS = [
 CLAIMS = [c for c, _ in CLAIM_KEYWORDS]
 SEVERITIES = ["critical", "high", "medium", "low"]
 FENCE = re.compile(r"```[ \t]*([\w+-]*)[ \t]*\r?\n(.*?)```", re.S)
-FIELD = re.compile(r"^\s*(?:\*\*)?(severity|entry point|claimed impact|impact)(?:\*\*)?\s*:\s*(.+)$", re.I | re.M)
+FIELD = re.compile(r"^\s*(?:\*\*)?(severity|entry[ _]point|claimed impact|impact|affected[ _]version)(?:\*\*)?\s*:\s*(.+)$",
+                   re.I | re.M)
+# `payload: |` followed by an indented block, as in the proof request's example (decision D-016).
+PAYLOAD_BLOCK = re.compile(r"^[ \t]*(?:\*\*)?payload(?:\*\*)?[ \t]*:[ \t]*\|[-+]?[ \t]*\r?\n((?:(?:[ \t]+[^\n]*|[ \t]*)(?:\r?\n|$))+)",
+                           re.I | re.M)
+# An affected version: 5.3.1, <5.4, <=5.3.1 or "before 5.4" (optionally "PyYAML 5.3.1" or "v5.3.1").
+VERSION = re.compile(r"(?:pyyaml\s*)?(?:v(?:ersion)?\s*)?(<=|<|before\s+)?\s*(\d+(?:\.\d+){0,3})", re.I)
+
+
+def parse_version(text):
+    """A normalized affected version ("5.3.1", "<5.4", "<=5.3.1", "before 5.4"), or "" if `text` is not one."""
+    s = (text or "").strip().strip("`*").strip()
+    match = VERSION.fullmatch(s)
+    if not match:
+        return ""
+    op = (match.group(1) or "").strip().lower()
+    return ("before %s" % match.group(2)) if op == "before" else "%s%s" % (op, match.group(2))
 
 
 @dataclass
@@ -33,6 +50,8 @@ class Ticket:
     payload: str = ""
     poc_problem: str = ""
     missing: list = field(default_factory=list)
+    # A normalized version string from parse_version, never the reporter's own words.
+    affected_version: str = ""
     # The canonical name (poc.OUT_OF_SCOPE_NAMES) of an out-of-scope entry point, never the reporter's words.
     out_of_scope_entry: str = ""
 
@@ -55,7 +74,15 @@ def classify_claim(text):
 
 
 def _fields(text):
-    return {k.lower(): v.strip() for k, v in FIELD.findall(text)}
+    return {k.lower().replace("_", " "): v.strip() for k, v in FIELD.findall(text)}
+
+
+def _payload_block(text):
+    match = PAYLOAD_BLOCK.search(text or "")
+    if not match:
+        return ""
+    body = textwrap.dedent(match.group(1).replace("\r\n", "\n")).strip("\n")
+    return body + "\n" if body.strip() else ""
 
 
 def parse(text):
@@ -74,7 +101,11 @@ def parse(text):
             python_blocks.append(body)
         elif lang in ("yaml", "yml", ""):
             yaml_blocks.append(body)
+    block = _payload_block(text)
+    if block:
+        yaml_blocks.append(block)
     payload = max(yaml_blocks, key=len) if yaml_blocks else ""
+    version = parse_version(fields.get("affected version"))
 
     problem = ""
     entry_point = ""
@@ -100,9 +131,11 @@ def parse(text):
         missing.append("poc")
     if not claim:
         missing.append("claim")
+    if not version:
+        missing.append("affected_version")
     out_of_scope = (poc.out_of_scope_name(fields.get("entry point")) or "an unsafe loader") if problem == "unsafe_loader" else ""
     return Ticket(claim=claim, severity=severity, entry_point=entry_point, payload=payload,
-                  poc_problem=problem, missing=missing, out_of_scope_entry=out_of_scope)
+                  poc_problem=problem, missing=missing, out_of_scope_entry=out_of_scope, affected_version=version)
 
 
 def merge(previous, followup_text):
@@ -125,6 +158,8 @@ def merge(previous, followup_text):
         merged.claim = update.claim
     if merged.severity == "unrated" and update.severity != "unrated":
         merged.severity = update.severity
+    if update.affected_version:
+        merged.affected_version = update.affected_version  # a version-only reply completes the proof on file
     missing = []
     if not merged.payload and not merged.poc_problem:
         missing.append("poc")
@@ -132,5 +167,7 @@ def merge(previous, followup_text):
         missing.append("entry_point")
     if not merged.claim:
         missing.append("claim")
+    if not merged.affected_version:
+        missing.append("affected_version")
     merged.missing = missing
     return merged

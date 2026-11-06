@@ -25,7 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-BUSY = ("Title: timing worst case\nSeverity: medium\nEntry point: yaml.full_load\n"
+BUSY = ("Title: timing worst case\nSeverity: medium\nAffected version: 5.3.1\nEntry point: yaml.full_load\n"
         "Claimed impact: denial of service\n\n```yaml\n!!python/object/new:tuple\n- !!python/object/new:map\n"
         "  - !!python/name:exec\n  - [\"while True: pass\"]\n```\n")
 

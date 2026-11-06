@@ -5,7 +5,7 @@ from unittest import mock
 from proveit import actions, config, reasons, states, store
 from tests.helpers import WorkDirTest, stub_each, stub_runs
 
-REPORT = ("Title: test\nSeverity: high\nEntry point: yaml.full_load\nClaimed impact: arbitrary code execution\n\n"
+REPORT = ("Title: test\nSeverity: high\nAffected version: 5.3.1\nEntry point: yaml.full_load\nClaimed impact: arbitrary code execution\n\n"
           "```yaml\na: 1\n```\n")
 CANARY = "Kp4CANARYz"
 

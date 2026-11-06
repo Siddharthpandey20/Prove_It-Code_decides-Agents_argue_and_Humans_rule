@@ -29,7 +29,7 @@ import threading
 from pathlib import Path
 
 from . import actions, evidence, messages, reasons, reports, screen, states, store
-from .config import LEGACY_STATE_DIR, PROVEIT_HOME, ensure_home
+from .config import LEGACY_STATE_DIR, PROVEIT_HOME, TARGET, ensure_home
 from .switch_client import Agent, CursorStore, SwitchError, open_to_everyone, register_agent
 
 log = logging.getLogger("proveit.intake")
@@ -183,7 +183,8 @@ def ticket_from_record(record):
     return reports.Ticket(claim=record.get("claim", ""), severity=record.get("severity", "unrated"),
                           entry_point=record.get("entry_point", ""), payload=store.payload(record["id"]),
                           poc_problem=record.get("poc_problem", ""), missing=list(record.get("missing", [])),
-                          out_of_scope_entry=record.get("out_of_scope_entry", ""))
+                          out_of_scope_entry=record.get("out_of_scope_entry", ""),
+                          affected_version=record.get("affected_version", ""))
 
 
 def fill(record, ticket):
@@ -197,6 +198,9 @@ def fill(record, ticket):
         "payload_sha256": poc.sha256(ticket.payload) if ticket.payload else None,
         "payload_bytes": len(ticket.payload.encode("utf-8", "surrogatepass")) if ticket.payload else 0,
         "tags": poc.tags(ticket.payload),
+        # Normalized by reports.parse_version; only the pinned builds are ever tested (decision D-016).
+        "affected_version": reports.parse_version(ticket.affected_version),
+        "tested_version": TARGET["builds"]["vulnerable"]["version"],
     })
     if ticket.payload:
         store.set_payload(record["id"], ticket.payload)

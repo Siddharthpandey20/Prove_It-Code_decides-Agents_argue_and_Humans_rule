@@ -26,3 +26,19 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Offline rehearsal, twice
         run: python scripts/rehearse.py --twice
+
+  # Windows: the unit tests (no Linux Docker engine there, so the sandbox tests
+  # skip). Catches anything that breaks the suite on a Windows machine, such as
+  # the Unix-only harness import that once failed test discovery.
+  windows-unit:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unit tests (sandbox tests skip without a Linux Docker engine)
+        run: python -m unittest discover -s tests -v

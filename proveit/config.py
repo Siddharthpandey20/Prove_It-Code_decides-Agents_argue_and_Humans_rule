@@ -1,12 +1,41 @@
 """Paths, the one target project, and the rules a proof of concept must follow."""
 
+import hashlib
 import os
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-WORK_DIR = Path(os.environ.get("PROVEIT_WORK_DIR", REPO_ROOT / "work"))
+DEFAULT_WORK_DIR = REPO_ROOT / "work"
+WORK_DIR = Path(os.environ.get("PROVEIT_WORK_DIR", DEFAULT_WORK_DIR))
 REPLAYS_DIR = REPO_ROOT / "reports" / "replays"
 TARGET_DIR = REPO_ROOT / "target"
+
+
+def _checkout_home():
+    """~/.proveit/<checkout>-<hash>: everything the agents must never read.
+
+    It holds reporter material (private/), Intake's credentials, the replay
+    login and the sandbox's staging mounts. It lives in the home folder, not in
+    the checkout, so the agents' configs can deny it by a path that does not
+    depend on where the checkout is: Codex's permission profile says
+    "~/.proveit" = "none", Claude's settings deny Read(~/.proveit/**). Docker
+    Desktop and Colima share the home folder with their VM, so the staging
+    mounts still work there.
+    """
+    key = hashlib.sha256(str(REPO_ROOT).encode("utf-8")).hexdigest()[:8]
+    return Path.home() / ".proveit" / ("%s-%s" % (REPO_ROOT.name, key))
+
+
+PROVEIT_HOME = Path(os.environ.get("PROVEIT_HOME") or _checkout_home())
+
+
+def ensure_home():
+    """Create ~/.proveit/<checkout> if needed, readable by this user only."""
+    PROVEIT_HOME.mkdir(parents=True, exist_ok=True)
+    if os.name == "posix":
+        os.chmod(PROVEIT_HOME, 0o700)
+    return PROVEIT_HOME
+LEGACY_STATE_DIR = REPO_ROOT / ".proveit"  # where versions before 2026-11-05 kept credentials
 
 # The pinned target. PyYAML's CVE-2020-14343 is triggered by a YAML document
 # alone, and the fix landed in a single release (5.3.1 vulnerable, 5.4 patched).

@@ -128,11 +128,13 @@ class AuditCheats(unittest.TestCase):
         # on the patched build the same document is refused by the library.
         sleeper = code_exec_payload("import time\ntime.sleep(60)\n")
         self.assertEqual(sandbox.run_poc("full_load", sleeper, "patched")["outcome"], "NOT_REPRODUCED")
-        # On the vulnerable build the sleep only happens because the library ran the payload,
-        # and it is reported as resource exhaustion, never as code execution.
+        # On the vulnerable build the sleep only happens because the library ran the payload. It
+        # runs past the limit without using the CPU, so it is inconclusive: never code execution,
+        # and not resource exhaustion either (an idle child proves nothing about exhaustion).
         run = sandbox.run_poc("full_load", sleeper, "vulnerable")
-        self.assertEqual(run["outcome"], "RESOURCE_EXHAUSTION", run)
+        self.assertEqual(run["outcome"], "INCONCLUSIVE", run)
         self.assertTrue(run["timed_out"])
+        self.assertLess(run["cpu_seconds"], 5)
 
     def test_ctypes_crash_is_not_a_proof(self):
         crasher = code_exec_payload("import ctypes\nctypes.string_at(0)\n")
@@ -260,9 +262,9 @@ fn: !!python/name:{c}mod.{c}fn
 class Canary(WorkDirTest):
     """W3: the canary is everywhere a reporter controls; it must be nowhere an agent can read."""
 
-    def cli(self, *argv):
+    def cli(self, *argv, role="reproducer"):
         out = io.StringIO()
-        with redirect_stdout(out), mock.patch.dict(os.environ, {"PROVEIT_ACTOR": "agent"}):
+        with redirect_stdout(out), mock.patch.dict(os.environ, {"PROVEIT_ACTOR": "agent", "PROVEIT_AGENT": role}):
             try:
                 cli.main(list(argv))
             except SystemExit as exc:
@@ -279,7 +281,8 @@ class Canary(WorkDirTest):
                    self.cli("check", tid, "--loader", "safe_load", "--by", "reproducer"),
                    self.cli("evidence", tid), self.cli("evidence", tid, "--json"), self.cli("show", tid),
                    self.cli("list"), self.cli("tally"), self.cli("tally", "--json"),
-                   self.cli("dispute", tid, "--reason", "testing", "--by", "skeptic")]
+                   self.cli("evidence", tid, role="skeptic")]
+        self.say(agent, "@prove-it-intake dispute %s testing" % tid, sender="prove-it-skeptic", kind="agent")
         record = store.load(tid)
         run = store.load_run(record["runs"][0]["file"])
         self.assertEqual(run["exception_type"], "ConstructorError", "the canary must have reached an exception message")
@@ -287,8 +290,9 @@ class Canary(WorkDirTest):
         self.say(agent, "@prove-it-intake evidence %s" % tid)
         self.say(agent, "@prove-it-intake status")
         visible = {
-            "ticket.json": (self.tmp / "work" / tid / "ticket.json").read_text(encoding="utf-8"),
-            "runs": "".join(p.read_text(encoding="utf-8") for p in (self.tmp / "work" / tid / "runs").glob("*.json")),
+            # Everything under work/ is agent-visible now (the reporter's material lives outside it).
+            "work/": "".join(p.read_text(encoding="utf-8", errors="replace")
+                             for p in (self.tmp / "work").rglob("*") if p.is_file()),
             "evidence": evidence.text(evidence.pack(record)) + json.dumps(evidence.pack(record)),
             "triage posts": agent.triage.text(),
             "cli output": "\n".join(outputs),
@@ -297,15 +301,17 @@ class Canary(WorkDirTest):
             self.assertNotIn(CANARY, text, "canary leaked into %s" % where)
             self.assertNotIn(CANARY.lower(), text.lower(), "canary leaked into %s" % where)
         # ...while the private copy for maintainers still has it, so the test is meaningful.
-        self.assertIn(CANARY, (self.tmp / "work" / tid / "private" / "report.md").read_text(encoding="utf-8"))
+        self.assertIn(CANARY, store.private_path(tid, "report.md").read_text(encoding="utf-8"))
+        self.assertFalse(str(store.private_path(tid, "report.md")).startswith(str(self.tmp / "work")),
+                         "reporter material must live outside the agents' ticket store")
 
 
 @unittest.skipUnless(DOCKER, "Docker is not running")
 class ConsoleFlow(WorkDirTest):
     """W5: in the Console flow the Reproducer's `check` sets reproduced / not_reproduced."""
 
-    def run_cli(self, *argv, agent=True):
-        env = {"PROVEIT_ACTOR": "agent"} if agent else {"PROVEIT_ACTOR": ""}
+    def run_cli(self, *argv, agent="reproducer"):
+        env = {"PROVEIT_ACTOR": "agent", "PROVEIT_AGENT": agent} if agent else {"PROVEIT_ACTOR": "", "PROVEIT_AGENT": ""}
         out = io.StringIO()
         with redirect_stdout(out), mock.patch.dict(os.environ, env):
             try:
@@ -329,7 +335,7 @@ class ConsoleFlow(WorkDirTest):
         self.assertEqual(store.load(real)["status"], "reproduced")
         self.assertEqual(store.load(slop)["status"], "not_reproduced")
         self.assertEqual([r["build"] for r in store.load(real)["runs"]], ["vulnerable"], "check runs only the vulnerable build")
-        out, err = self.run_cli("override", real, "--by", "skeptic")
+        out, err = self.run_cli("override", real, "--by", "skeptic", agent="skeptic")
         self.assertIn("only humans", err)
         out, err = self.run_cli("cost", real, "--usd", "1", "--source", "x")
         self.assertIn("only humans", err)

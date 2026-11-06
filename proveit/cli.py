@@ -12,9 +12,17 @@
   cost R-001 --usd X --source S  a maintainer records agent cost from Switch ROI or a dashboard (humans only)
   tally                          totals for the demo's closing slide
   submit FILE                    create a ticket from a report file, without Switch
+  export R-001 [--out DIR]       the ticket's evidence as a folder with a SHA-256 manifest
+  export --verify DIR            check an exported folder against its manifest
+  doctor [--offline]             is this machine ready for the demo? (changes nothing)
 
-Agents run these with PROVEIT_ACTOR=agent (set in .claude/settings.json and
-.codex/config.toml); override and cost then refuse.
+Agents run these with PROVEIT_ACTOR=agent and PROVEIT_AGENT=reproducer or
+skeptic, both set by the agent's own config (agents/reproducer/.claude/settings.json,
+agents/skeptic/.codex/config.toml). The Reproducer may run check and the
+read-only commands; the Skeptic only the read-only ones, and it records concur /
+dispute by posting them to Intake in #proveit-triage, where Switch vouches for
+the sender. An agent's --by is replaced by its role. override and cost are for
+humans only.
 """
 
 import argparse
@@ -26,8 +34,43 @@ from . import actions, evidence, judge, reports, sandbox, screen, states, store
 from .config import ENTRY_POINTS, TARGET
 
 
+READ_ONLY = {"evidence", "show", "list", "tally"}
+# What each agent role may run. The Reproducer produces evidence; the Skeptic judges it.
+ROLE_COMMANDS = {
+    "reproducer": READ_ONLY | {"check", "export"},
+    # The Skeptic only reads. It records concur / dispute by posting them to Intake in the
+    # triage room, where Switch vouches for the sender, so no shell can speak for it.
+    "skeptic": set(READ_ONLY),
+}
+
+
 def actor():
     return "agent" if os.environ.get("PROVEIT_ACTOR", "").strip().lower() == "agent" else "human"
+
+
+def agent_role():
+    """The agent's role from its config, or None. Only meaningful when actor() is 'agent'."""
+    role = os.environ.get("PROVEIT_AGENT", "").strip().lower()
+    return role if role in ROLE_COMMANDS else None
+
+
+def refuse_for_role(cmd):
+    """Why an agent may not run `cmd`, or None. Humans are never refused here."""
+    if actor() != "agent":
+        return None
+    if cmd in ("override", "cost"):
+        return "only humans may %s; this shell runs as an agent (PROVEIT_ACTOR=agent)" % cmd
+    role = agent_role()
+    allowed = ROLE_COMMANDS.get(role, READ_ONLY)
+    if cmd in allowed:
+        return None
+    if cmd in ("concur", "dispute"):
+        return ("agents record verdicts in #proveit-triage, not here: post `@prove-it-intake %s R-001%s` "
+                "(Intake accepts it only from the Skeptic)" % (cmd, " <reason>" if cmd == "dispute" else ""))
+    if role is None:
+        return ("this agent has no role (PROVEIT_AGENT is not reproducer or skeptic), so it may only read: %s"
+                % ", ".join(sorted(READ_ONLY)))
+    return "the %s may not run %s; it may run: %s" % (role, cmd, ", ".join(sorted(allowed)))
 
 
 def _print(obj):
@@ -45,8 +88,7 @@ def cmd_check(args):
                                                  run.get("entry_point"), run.get("outcome")))
     print("  - " + judge.describe(run))
     print("ticket status: %s" % record["status"])
-    for note in judge.notes(judge.facts(record, evidence.latest_run(record, "vulnerable"),
-                                        evidence.latest_run(record, "patched"))):
+    for note in evidence.pack(record)["notes"]:
         print("note: " + note)
     print("evidence: " + path)
 
@@ -96,6 +138,28 @@ def cmd_tally(args):
         print(actions.tally_text(t))
 
 
+def cmd_export(args):
+    from . import export
+    if args.verify:
+        problems = export.verify(args.verify)
+        for problem in problems:
+            print(problem)
+        if problems:
+            sys.exit("export %s does NOT match its manifest" % args.verify)
+        print("export %s matches its manifest" % args.verify)
+        return
+    if not args.ticket:
+        sys.exit("give a ticket id, or --verify <folder>")
+    print("exported %s to %s" % (args.ticket, export.export(args.ticket, args.out)))
+
+
+def cmd_doctor(args):
+    from . import doctor
+    report = doctor.run(live=not args.offline)
+    if report.failed:
+        sys.exit(1)
+
+
 def cmd_submit(args):
     """Offline intake for one report file: the same parsing and screening as the agent."""
     from .intake import fill, target_for
@@ -137,15 +201,25 @@ def main(argv=None):
     p.add_argument("--source", required=True); p.add_argument("--by", default="maintainer"); p.set_defaults(fn=cmd_cost)
     p = sub.add_parser("tally"); p.add_argument("--json", action="store_true"); p.set_defaults(fn=cmd_tally)
     p = sub.add_parser("submit"); p.add_argument("file"); p.set_defaults(fn=cmd_submit)
+    p = sub.add_parser("export"); p.add_argument("ticket", nargs="?"); p.add_argument("--out")
+    p.add_argument("--verify", metavar="DIR"); p.set_defaults(fn=cmd_export)
+    p = sub.add_parser("doctor", help="check this machine is ready for the demo")
+    p.add_argument("--offline", action="store_true", help="skip the checks that need the Switch server")
+    p.set_defaults(fn=cmd_doctor)
     args = parser.parse_args(argv)
-    if args.cmd in ("override", "cost") and actor() != "human":
-        sys.exit("refused: only humans may %s; this shell runs as an agent (PROVEIT_ACTOR=agent)" % args.cmd)
+    refusal = refuse_for_role(args.cmd)
+    if refusal:
+        sys.exit("refused: " + refusal)
+    if actor() == "agent" and hasattr(args, "by"):
+        args.by = agent_role()  # an agent's name comes from its config, never from its own flag
     try:
         args.fn(args)
     except states.IllegalTransition as exc:
         sys.exit("refused: %s" % exc)
     except FileNotFoundError as exc:
         sys.exit("no such ticket: %s" % exc)
+    except sandbox.SandboxError as exc:
+        sys.exit("sandbox error: %s" % exc)
 
 
 if __name__ == "__main__":

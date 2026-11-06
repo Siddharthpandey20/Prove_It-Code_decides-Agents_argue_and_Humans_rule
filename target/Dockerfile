@@ -16,8 +16,11 @@ FROM python:3.9-slim@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1
 ARG PYYAML_VERSION
 # PyYAML 5.4 has no ARM64 wheel (Apple silicon, Linux ARM), and its source
 # build fails with Cython 3, so build it against Cython 0.x without isolation.
+# Build tools are pinned to exact versions, so every build installs the same
+# files. pip checks each download against the index's SHA-256; a mismatch is a
+# corrupted download, proxy or cache, not this file: rebuild with --no-cache.
 RUN test -n "$PYYAML_VERSION" \
-    && pip install --no-cache-dir --disable-pip-version-check 'Cython<3' wheel \
+    && pip install --no-cache-dir --disable-pip-version-check 'Cython==0.29.37' 'wheel==0.45.1' \
     && pip install --no-cache-dir --disable-pip-version-check --no-build-isolation "pyyaml==${PYYAML_VERSION}" \
     && python -c "import yaml; print('pyyaml', yaml.__version__)"
 

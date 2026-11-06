@@ -2,66 +2,76 @@
 # here: an `allow` decision would run a command outside Codex's sandbox.
 # Format: https://learn.chatgpt.com/docs/agent-configuration/rules
 #
-# Rules match the command's leading words exactly, so a rule on a path
-# (`cat work`) cannot protect files: `cat ../../work/...` would not match it.
-# Codex's workspace-write sandbox limits writes, not reads. So instead of
-# guarding paths, this file forbids the tools that read files: the Skeptic
-# needs only `python -m proveit evidence|show|list|tally|concur|dispute`.
+# These rules are the second wall. The first is the permission profile in
+# ../config.toml: the OS sandbox refuses every read of ~/.proveit (reporter
+# material and credentials) and every write outside the temp folder, whatever
+# the command. Rules match a command's leading words, so they cannot list every
+# program; they forbid the ways found to read files or act as someone else, so
+# the Skeptic is told "no" early instead of failing in the sandbox.
 # Check this file with:
 #   codex execpolicy check --rules agents/skeptic/.codex/rules/proveit.rules <command...>
 
+PYTHONS = ["python", "python3", "python3.9", "python3.10", "python3.11", "python3.12", "python3.13", "python3.14",
+           "py", "pypy", "pypy3", "/usr/bin/python3", "/usr/local/bin/python3", "/opt/homebrew/bin/python3"]
+
 prefix_rule(
-    pattern = [["python", "python3"], "-m", "proveit", "check"],
+    pattern = [PYTHONS, "-m", "proveit", ["check", "override", "cost", "submit", "build", "concur", "dispute", "export", "doctor"]],
     decision = "forbidden",
-    justification = "The Skeptic examines evidence (proveit evidence); it does not produce it.",
-    match = ["python -m proveit check R-001", "python3 -m proveit check R-001"],
-    not_match = ["python -m proveit evidence R-001", "python3 -m proveit concur R-001 --by skeptic"],
+    justification = "The Skeptic only reads evidence; it records concur / dispute by posting to @prove-it-intake in #proveit-triage.",
+    match = ["python -m proveit check R-001", "python3 -m proveit concur R-001", "python -m proveit override R-001 --by x"],
+    not_match = ["python -m proveit evidence R-001", "python3 -m proveit show R-001"],
 )
 
 prefix_rule(
-    pattern = [["python", "python3"], "-m", "proveit", ["override", "cost", "submit", "build"]],
-    decision = "forbidden",
-    justification = "Only maintainers override disputes, record cost, submit reports or build images.",
-    match = ["python -m proveit override R-001 --by x", "python3 -m proveit cost R-001 --usd 1 --source x"],
-)
-
-prefix_rule(
-    pattern = [["python", "python3"], ["-c", "-", "-i"]],
+    # Interpreter flags before the code (python -I -c ..., python -Ic ...) and stdin / interactive mode.
+    pattern = [PYTHONS, ["-c", "-", "-i", "-I", "-E", "-S", "-s", "-B", "-X", "-O", "-OO", "-u", "-q", "-W", "-b", "-bb",
+                         "-d", "-v", "-x", "-Ic", "-Ec", "-Sc", "-sc", "-Bc", "-uc", "-qc", "-Oc", "-IE", "-IS", "-IB"]],
     decision = "forbidden",
     justification = "No ad hoc code: only the proveit commands.",
-    match = ["python -c 'print(1)'", "python3 -c 'print(1)'", "python -"],
+    match = ["python -c 'print(1)'", "python3 -c 'print(1)'", "python -", "python -I -c 'print(1)'", "python -Ic 'print(1)'",
+             "python3.9 -c 'print(1)'", "/usr/bin/python3 -c 'print(1)'", "py -c 'print(1)'"],
     not_match = ["python -m proveit evidence R-001"],
 )
 
 prefix_rule(
-    pattern = [["python", "python3"], "-m", ["pip", "http.server", "json.tool", "base64", "zipfile", "tarfile"]],
+    pattern = [PYTHONS, "-m", ["pip", "http.server", "json.tool", "base64", "zipfile", "tarfile", "runpy", "code", "pdb",
+                               "pydoc", "idlelib", "webbrowser", "shutil", "proveit.store", "proveit.intake",
+                               "proveit.actions", "proveit.cli", "proveit.sandbox"]],
     decision = "forbidden",
-    justification = "Only the proveit module, never other modules that read or serve files.",
-    match = ["python3 -m json.tool ../../work/R-001/private/contact.json", "python -m pip install x"],
+    justification = "Only `python -m proveit`, never other modules that read, serve or change files.",
+    match = ["python3 -m json.tool ../../work/R-001/ticket.json", "python -m pip install x", "python -m runpy x",
+             "python -m proveit.store"],
 )
 
 prefix_rule(
-    pattern = [["cat", "head", "tail", "less", "more", "sed", "awk", "grep", "egrep", "fgrep", "rg",
-                "strings", "xxd", "od", "hexdump", "base64", "nl", "tac", "cut", "sort", "uniq", "diff",
-                "cmp", "find", "file", "open", "vi", "vim", "nano", "jq", "perl", "ruby", "node"]],
+    pattern = [["cat", "head", "tail", "less", "more", "sed", "awk", "gawk", "mawk", "nawk", "grep", "egrep", "fgrep",
+                "rg", "ag", "strings", "xxd", "od", "hexdump", "base64", "nl", "tac", "cut", "sort", "uniq", "diff",
+                "cmp", "find", "file", "open", "vi", "vim", "view", "nano", "ex", "ed", "emacs", "jq", "yq", "perl",
+                "ruby", "node", "deno", "bun", "php", "lua", "tclsh", "swift", "osascript", "sqlite3", "dd", "xargs",
+                "paste", "tee", "pr", "fold", "fmt", "rev", "column", "iconv", "split", "csplit", "look", "bat",
+                "batcat", "pbcopy", "mdls", "plutil", "ditto", "rsync", "tar", "zip", "unzip", "gzip", "zcat",
+                "Get-Content", "gc", "type", "Select-String", "cmd", "cmd.exe", "powershell", "powershell.exe",
+                "pwsh", "pwsh.exe"]],
     decision = "forbidden",
-    justification = "The Skeptic reads tickets only through `python -m proveit evidence`; reporter material in work/*/private/ is off limits.",
-    match = ["cat ../../work/R-001/private/report.md", "head work/R-001/private/payload.yaml",
-             "grep -r token ../../work", "sed -n 1p ../../work/R-001/private/report.md"],
+    justification = "The Skeptic reads tickets only through `python -m proveit evidence`; reporter material is off limits.",
+    match = ["cat ../../work/R-001/ticket.json", "head ~/.proveit/x/private/R-001/payload.yaml",
+             "grep -r token ../../work", "Get-Content ../../work/R-001/ticket.json", "type x", "dd if=x",
+             "xargs cat", "paste x", "tee /dev/null", "powershell -c gc x", "pwsh -c gc x", "cmd /c type x",
+             "osascript -e x"],
 )
 
 prefix_rule(
-    pattern = [["curl", "wget", "nc", "ncat", "ssh", "scp", "sftp", "ftp", "telnet"]],
+    pattern = [["curl", "wget", "nc", "ncat", "socat", "ssh", "scp", "sftp", "ftp", "telnet"]],
     decision = "forbidden",
     justification = "No network from the triage agents.",
     match = ["curl https://example.com", "wget https://example.com"],
 )
 
 prefix_rule(
-    pattern = [["bash", "sh", "zsh", "env", "printenv", "sudo", "su"]],
+    pattern = [["bash", "sh", "zsh", "fish", "dash", "ksh", "csh", "tcsh", "env", "printenv", "sudo", "su", "doas", "export", "set"]],
     decision = "forbidden",
-    justification = "No nested shells and no environment dumps.",
-    match = ["bash -c 'cat x'", "sh -c id", "printenv"],
+    justification = "No nested shells, no environment changes and no environment dumps.",
+    match = ["bash -c 'cat x'", "sh -c id", "printenv", "env PROVEIT_AGENT=reproducer python -m proveit check R-001"],
 )
 
 prefix_rule(
@@ -72,7 +82,7 @@ prefix_rule(
 )
 
 prefix_rule(
-    pattern = [["rm", "mv", "cp", "chmod", "git"]],
+    pattern = [["rm", "mv", "cp", "chmod", "chown", "ln", "touch", "mkdir", "git"]],
     decision = "forbidden",
     justification = "The Skeptic never changes files.",
     match = ["rm -rf work", "git status"],

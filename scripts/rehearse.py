@@ -19,6 +19,7 @@ messages) is the real code.
 
 import argparse
 import hashlib
+import itertools
 import json
 import os
 import subprocess
@@ -40,9 +41,11 @@ class Room:
 
 
 def proveit(args, work, agent):
-    """Run `python -m proveit ...` exactly as an agent (PROVEIT_ACTOR=agent) or a maintainer would."""
-    env = dict(os.environ, PROVEIT_WORK_DIR=str(work), PROVEIT_ACTOR="agent" if agent else "")
-    print("  $ python -m proveit " + " ".join(args) + ("   # as agent" if agent else "   # as maintainer"))
+    """Run `python -m proveit ...` exactly as an agent would (agent="reproducer" or "skeptic": PROVEIT_ACTOR=agent
+    and PROVEIT_AGENT=<role>, as their configs set them) or as a maintainer (agent=False)."""
+    env = dict(os.environ, PROVEIT_WORK_DIR=str(work), PROVEIT_ACTOR="agent" if agent else "",
+               PROVEIT_AGENT=agent or "")
+    print("  $ python -m proveit " + " ".join(args) + ("   # as the " + agent if agent else "   # as maintainer"))
     proc = subprocess.run([sys.executable, "-m", "proveit"] + args, cwd=ROOT, env=env, capture_output=True, text=True)
     for line in (proc.stdout + proc.stderr).strip().splitlines():
         print("    " + line)
@@ -56,7 +59,7 @@ def rehearse(work):
     config.WORK_DIR = work
     replays = ROOT / "reports" / "replays"
 
-    intake = Intake({"agent_name": "prove-it-intake"}, source="rehearsal")
+    intake = Intake({"agent_name": "prove-it-intake", "maintainers": ["maintainer"]}, source="rehearsal")
     intake.intake, intake.triage = Room("proveit-intake"), Room("proveit-triage")
     counter = {"n": 0}
 
@@ -67,19 +70,23 @@ def rehearse(work):
             "body": text, "message_id": mid, "thread_id": thread, "sender_name": "replay-reporter", "sender_kind": "user"}})
         return mid
 
-    def maintainer(text):
-        print("  [maintainer in #proveit-triage] " + text)
+    said = itertools.count(1)
+
+    def maintainer(text, who="maintainer"):
+        print("  [%s in #proveit-triage] %s" % (who, text))
         intake.on_triage_event(None, "message", {"payload": {
-            "body": text, "message_id": "t", "thread_id": None, "sender_name": "maintainer", "sender_kind": "user"}})
+            "body": text, "message_id": "t-%d" % next(said), "thread_id": None, "sender_name": who, "sender_kind": "user"}})
 
     def skeptic(tid):
-        """Scripted stand-in for the Skeptic: dispute if the checklist raises any note, else concur."""
-        proveit(["evidence", tid], work, agent=True)
+        """Scripted stand-in for the Skeptic: dispute if the checklist raises any note, else concur.
+        Like the real one, it reads with the CLI and records its verdict by posting to Intake."""
+        proveit(["evidence", tid], work, agent="skeptic")
         notes = evidence.pack(store.load(tid))["notes"]
-        if notes:
-            proveit(["dispute", tid, "--reason", "; ".join(notes), "--by", "skeptic"], work, agent=True)
-        else:
-            proveit(["concur", tid, "--by", "skeptic"], work, agent=True)
+        text = ("@prove-it-intake dispute %s %s" % (tid, "; ".join(notes))) if notes else ("@prove-it-intake concur %s" % tid)
+        print("  [prove-it-skeptic in #proveit-triage] " + text)
+        intake.on_triage_event(None, "message", {"payload": {
+            "body": text, "message_id": "s-" + tid, "thread_id": None, "sender_name": "prove-it-skeptic",
+            "sender_kind": "agent", "sender": "@switch-agent-prove-it-skeptic"}})
 
     print("\n== 1. Reports arrive in #proveit-intake")
     print("-- replay 01 (real CVE-2020-14343)")
@@ -95,17 +102,18 @@ def rehearse(work):
 
     print("\n== 2. Reproducer (scripted stand-in) checks each ticket on the vulnerable build")
     for tid in ("R-001", "R-002", "R-003"):
-        proveit(["check", tid, "--by", "reproducer"], work, agent=True)
+        proveit(["check", tid], work, agent="reproducer")
 
     print("\n== 3. Skeptic (scripted stand-in) reads the evidence and concurs or disputes")
     for tid in ("R-001", "R-002", "R-003"):
         skeptic(tid)
 
     print("\n== 4. Maintainer decides")
+    maintainer("@prove-it-intake close R-001 not a bug", who="someone-else")  # refused: not a maintainer
     maintainer("@prove-it-intake escalate R-001")           # refused: disputed
     print("-- maintainer: @prove-it-reproducer retry R-001 on the patched build")
-    proveit(["check", "R-001", "--build", "patched", "--by", "reproducer"], work, agent=True)
-    proveit(["evidence", "R-001"], work, agent=True)
+    proveit(["check", "R-001", "--build", "patched"], work, agent="reproducer")
+    proveit(["evidence", "R-001"], work, agent="reproducer")
     maintainer("@prove-it-intake override R-001 patched build checked: fixed in 5.4")
     maintainer("@prove-it-intake escalate R-001 confirmed, CVE-2020-14343")
     maintainer("@prove-it-intake close R-002 safe_load refused the tag; nothing ran")

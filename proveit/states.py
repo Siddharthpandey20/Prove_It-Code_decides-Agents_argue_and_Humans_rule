@@ -29,7 +29,9 @@ TABLE = [
     ("check_patched", CHECKED | {"disputed"}, {SAME}, {"agent", "human", "intake"}),
     ("concur", CHECKED, {SAME}, {"agent", "human"}),
     ("dispute", CHECKED, {"disputed"}, {"agent", "human"}),
+    # After a dispute it clears it; on a checked ticket with no current concur it lets a maintainer escalate anyway.
     ("override", {"disputed"}, {"reproduced", "not_reproduced"}, {"human"}),
+    ("override", CHECKED, {SAME}, {"human"}),
     ("escalate", CHECKED, {"escalated"}, {"human"}),
     ("close", OPEN, {"closed"}, {"human"}),
 ]

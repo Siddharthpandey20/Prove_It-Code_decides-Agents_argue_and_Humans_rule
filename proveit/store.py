@@ -1,19 +1,27 @@
 """Tickets on disk, shared by the Intake agent and the agents in #triage.
 
-work/
+work/                      what agents may read (nothing in it is reporter text)
   R-001/
-    ticket.json         fixed fields, status, timeline: what agents may read
-    runs/               one sanitized sandbox record per run: what agents may read
-    private/            reporter-controlled material; only Intake, the sandbox and
-      report.md         maintainers on the host read it. Agents are denied it
-      payload.yaml      (.claude/settings.json) and never told about it.
-      screen.json
-      contact.json
+    ticket.json            fixed fields, status, timeline
+    runs/                  one sanitized sandbox record per run
+~/.proveit/<checkout>/private/
+  R-001/                   reporter-controlled material, outside the checkout.
+    report.md              Only Intake, the sandbox and maintainers on the host read it;
+    payload.yaml           the Skeptic's sandbox profile and the Reproducer's settings
+    screen.json            both deny ~/.proveit.
+    contact.json
+
+With PROVEIT_WORK_DIR (tests, the rehearsal, e2e) the private folder sits next
+to the work folder instead, unless PROVEIT_PRIVATE_DIR says otherwise.
 """
 
+import contextlib
 import json
 import os
 import re
+import shutil
+import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -37,25 +45,118 @@ def _dir(ticket_id):
 
 
 def _write(path, text):
+    """Write atomically through a temp file of its own, so two writers never share one."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
+# --- one writer per ticket ----------------------------------------------------------
+# Intake, the Reproducer's CLI and a maintainer's CLI are separate processes that all
+# read, change and save ticket.json. Every load-modify-save holds the ticket's lock: a
+# file lock across processes (flock, or msvcrt on Windows), re-entrant within a thread.
+_held = threading.local()
+
+
+def _lock_file(handle):
+    if os.name == "nt":
+        import msvcrt
+        handle.seek(0)
+        while True:
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                return
+            except OSError:
+                time.sleep(0.05)
+    import fcntl
+    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+
+
+def _unlock_file(handle):
+    if os.name == "nt":
+        import msvcrt
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+@contextlib.contextmanager
+def ticket_lock(ticket_id):
+    folder = _dir(ticket_id)
+    depth = getattr(_held, "depth", None)
+    if depth is None:
+        depth = _held.depth = {}
+    if depth.get(ticket_id):
+        depth[ticket_id] += 1
+        try:
+            yield
+        finally:
+            depth[ticket_id] -= 1
+        return
+    if not folder.is_dir():
+        raise FileNotFoundError(ticket_id)  # never create a ticket folder just to lock it
+    with open(folder / ".lock", "a+") as handle:
+        _lock_file(handle)
+        depth[ticket_id] = 1
+        try:
+            yield
+        finally:
+            depth[ticket_id] = 0
+            _unlock_file(handle)
 
 
 def next_id():
+    """Reserve a new ticket id by creating its folder exclusively, so two reports never share one."""
     work_dir().mkdir(parents=True, exist_ok=True)
     numbers = [int(p.name[2:]) for p in work_dir().glob("R-*") if p.name[2:].isdigit()]
-    return "R-%03d" % (max(numbers, default=0) + 1)
+    n = max(numbers, default=0) + 1
+    while True:
+        ticket_id = "R-%03d" % n
+        try:
+            (work_dir() / ticket_id).mkdir()
+            return ticket_id
+        except FileExistsError:
+            n += 1
+
+
+def private_root():
+    """Where reporter material lives: ~/.proveit/<checkout>/private for the real ticket store,
+    or next to a work folder moved with PROVEIT_WORK_DIR (tests, the rehearsal, e2e)."""
+    explicit = os.environ.get("PROVEIT_PRIVATE_DIR")
+    if explicit:
+        return Path(explicit)
+    if work_dir().resolve() == config.DEFAULT_WORK_DIR.resolve():
+        return config.ensure_home() / "private"
+    return work_dir().parent / ".proveit-private"
+
+
+def private_dir(ticket_id):
+    """The ticket's private folder, moving one left by an older version out of work/ first."""
+    folder = private_root() / _dir(ticket_id).name
+    legacy = _dir(ticket_id) / "private"
+    if legacy.is_dir() and not folder.exists():
+        folder.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(legacy), str(folder))
+    return folder
 
 
 def create(fields, raw_text, source):
-    """fields: only fixed values (claim, severity, entry_point, ...). raw_text goes to private/."""
+    """fields: only fixed values (claim, severity, entry_point, ...). raw_text goes to the private folder."""
     ticket_id = next_id()
     folder = _dir(ticket_id)
-    (folder / "runs").mkdir(parents=True)
-    (folder / "private").mkdir()
-    _write(folder / "private" / "report.md", raw_text)
+    (folder / "runs").mkdir()
+    private = private_dir(ticket_id)
+    private.mkdir(parents=True, mode=0o700)
+    _write(private / "report.md", raw_text)
     record = dict(fields, id=ticket_id, status="new", source=source, created_at=now(),
                   times={"received": time.time()}, timeline=[], runs=[])
     save(record)
@@ -71,7 +172,7 @@ def save(record):
 
 
 def private_path(ticket_id, name):
-    return _dir(ticket_id) / "private" / name
+    return private_dir(ticket_id) / name
 
 
 def set_payload(ticket_id, payload):
@@ -117,12 +218,26 @@ def apply(record, command, actor, by, target=None, **details):
 
 
 def save_run(ticket_id, run):
+    """Save a run under the next free number, claimed exclusively so concurrent runs never overwrite each other."""
+    with ticket_lock(ticket_id):
+        return _save_run(ticket_id, run)
+
+
+def _save_run(ticket_id, run):
     runs = _dir(ticket_id) / "runs"
     runs.mkdir(parents=True, exist_ok=True)
     index = len(list(runs.glob("*.json"))) + 1
-    name = "%02d-%s.json" % (index, run["build"])
-    _write(runs / name, json.dumps(run, indent=2, sort_keys=True))
-    return "work/%s/runs/%s" % (ticket_id, name)
+    text = json.dumps(run, indent=2, sort_keys=True)
+    while True:
+        name = "%02d-%s.json" % (index, run["build"])
+        if not any(runs.glob("%02d-*.json" % index)):
+            try:
+                with open(runs / name, "x", encoding="utf-8") as handle:
+                    handle.write(text)
+                return "work/%s/runs/%s" % (ticket_id, name)
+            except FileExistsError:
+                pass
+        index += 1
 
 
 def load_run(display_path):
@@ -134,7 +249,8 @@ def load_run(display_path):
 def all_tickets():
     if not work_dir().exists():
         return []
-    return [load(p.name) for p in sorted(work_dir().glob("R-*")) if (p / "ticket.json").exists()]
+    return [load(p.name) for p in sorted(work_dir().glob("R-*"), key=lambda p: int(p.name[2:]) if p.name[2:].isdigit() else 0)
+            if (p / "ticket.json").exists()]
 
 
 def find_by_thread(thread_id):

@@ -1,0 +1,86 @@
+# Prove It, rooms only: for when prove-it-reproducer and prove-it-skeptic
+# already exist (created by switch/prove-it.template.yaml). Same rooms,
+# link, instructions, document and kickoff.
+version: 1
+
+params:
+  bridge:
+    type: bridge
+    description: Where the rooms are mirrored.
+    default: [Mattermost, $first]
+
+group:
+  name: Prove It
+  description: Bug reports must prove themselves before a maintainer reads them.
+
+rooms:
+  - name: proveit-intake
+    description: Report a security bug in PyYAML here. You will be asked for a proof as data (entry point + YAML payload).
+    bridge: "{bridge}"
+    channel_type: channel_public   # anyone may report
+    agents: [prove-it-intake]
+    users: ["{$creator}"]
+    instructions: |
+      Anyone may post a bug report here. Only the Intake agent is in this
+      room, and it runs no code. Each report gets its own thread, where
+      Intake asks for a proof in the data-only format and later posts the
+      maintainers' decision.
+
+  - name: proveit-triage
+    description: Maintainers and agents. Tickets arrive here with proof, not opinions.
+    bridge: "{bridge}"
+    # Private: reporters must not be able to join the room where tickets are decided.
+    channel_type: channel_private
+    agents: [prove-it-intake, prove-it-reproducer, prove-it-skeptic]
+    users: ["{$creator}"]
+    instructions: |
+      Code decides, agents argue, humans rule. Tickets from #proveit-intake
+      land here as fixed fields. Nobody in this room reads the reporter's
+      prose, and the payload only ever runs in the sandbox.
+
+      Flow for every ticket:
+      1. A maintainer asks @prove-it-reproducer to check it. The Reproducer
+         runs `python -m proveit check <id>` (vulnerable build only) and
+         explains the evidence.
+      2. @prove-it-skeptic reads `python -m proveit evidence <id>`, works
+         through its checklist, and ends with `@prove-it-intake concur <id>`
+         or `@prove-it-intake dispute <id> <reason>`, which Intake records.
+      3. A maintainer may steer: ask the Reproducer for the patched build
+         (`check <id> --build patched`), another allowlisted loader, or the
+         evidence pack.
+      4. A maintainer decides, addressed to Intake: `escalate <id> [note]`
+         (needs a current concur, or an override), `close <id> <reason>`, or
+         `override <id> [note]`. Only the maintainers listed in Intake's
+         settings may decide. Intake tells the reporter in their thread.
+
+      Quarantined reports stay with maintainers until one replies
+      `@prove-it-intake release <id>`; they can never be escalated directly.
+    docs:
+      - name: verdict-rules
+        description: How a sandbox run becomes evidence
+        instructions: Cite these rules when you explain a result.
+        content: |
+          A proof is data: an allowlisted entry point (safe_load, full_load,
+          load with SafeLoader or FullLoader) and a YAML payload of at most
+          64 KB. Python code and the loaders PyYAML documents as unsafe are
+          INVALID_PROOF and never run.
+          Inside the container a parent process starts a child that makes the
+          one library call, and the parent alone writes the result:
+          CODE_EXECUTION: /tmp/proveit/marker appeared (only the library,
+            running the payload as code, can create it).
+          CRASH: the call died on a native fault (a signal such as SIGSEGV).
+          RESOURCE_EXHAUSTION: the call ran past 10 s or 192 MB. Lower
+            severity; never code execution.
+          NOT_REPRODUCED: the call returned or raised normally.
+          check runs PyYAML 5.3.1 (vulnerable); the patched 5.4 runs only when
+          someone asks. A result that reproduces on both builds is flagged as
+          a possible new issue for a human.
+    kickoff: |
+      @prove-it-reproducer @prove-it-skeptic this is the triage room. In one
+      line each, say what you will do when a maintainer asks you about a
+      ticket.
+
+links:
+  - from: proveit-intake
+    to: proveit-triage
+    label: triage

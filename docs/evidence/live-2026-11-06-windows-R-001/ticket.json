@@ -1,0 +1,145 @@
+{
+  "claim": "code_execution",
+  "created_at": "2026-11-05T21:04:27Z",
+  "decision_note": "confirmed, CVE-2020-14343",
+  "entry_point": "full_load",
+  "id": "R-001",
+  "missing": [],
+  "notified": true,
+  "override": {
+    "after": "dispute",
+    "at": "2026-11-05T21:43:07Z",
+    "by": "user",
+    "evidence": {
+      "patched": "work/R-001/runs/02-patched.json",
+      "vulnerable": "work/R-001/runs/01-vulnerable.json"
+    },
+    "note": "patched build checked"
+  },
+  "payload_bytes": 171,
+  "payload_sha256": "75ce42a97f62f51b906ca79b2e94f7affd0eb6816850b3bfc5132ec65bfbda06",
+  "poc_problem": "",
+  "runs": [
+    {
+      "actor": "agent",
+      "at": "2026-11-05T21:12:07Z",
+      "build": "vulnerable",
+      "by": "reproducer",
+      "entry_point": "full_load",
+      "file": "work/R-001/runs/01-vulnerable.json",
+      "outcome": "CODE_EXECUTION",
+      "seconds": 0.068
+    },
+    {
+      "actor": "agent",
+      "at": "2026-11-05T21:20:59Z",
+      "build": "patched",
+      "by": "reproducer",
+      "entry_point": "full_load",
+      "file": "work/R-001/runs/02-patched.json",
+      "outcome": "NOT_REPRODUCED",
+      "seconds": 0.066
+    }
+  ],
+  "severity": "critical",
+  "skeptic": {
+    "actor": "agent",
+    "at": "2026-11-05T21:13:03Z",
+    "by": "prove-it-skeptic",
+    "evidence": {
+      "patched": null,
+      "vulnerable": "work/R-001/runs/01-vulnerable.json"
+    },
+    "reason": "item d: patched_build_checked False; no comparable patched-build result, so behavior on the patched build is unknown",
+    "stale": true,
+    "verdict": "dispute"
+  },
+  "source": "switch",
+  "status": "escalated",
+  "tags": [
+    "!!python/object/new:tuple",
+    "!!python/object/new:map",
+    "!!python/name:eval"
+  ],
+  "timeline": [
+    {
+      "actor": "intake",
+      "at": "2026-11-05T21:04:27Z",
+      "by": "intake",
+      "from": "new",
+      "to": "in_triage",
+      "what": "receive"
+    },
+    {
+      "actor": "agent",
+      "at": "2026-11-05T21:12:07Z",
+      "build": "vulnerable",
+      "by": "reproducer",
+      "from": "in_triage",
+      "outcome": "CODE_EXECUTION",
+      "to": "reproduced",
+      "what": "check"
+    },
+    {
+      "actor": "agent",
+      "at": "2026-11-05T21:13:03Z",
+      "by": "prove-it-skeptic",
+      "evidence": {
+        "patched": null,
+        "vulnerable": "work/R-001/runs/01-vulnerable.json"
+      },
+      "from": "reproduced",
+      "reason": "item d: patched_build_checked False; no comparable patched-build result, so behavior on the patched build is unknown",
+      "to": "disputed",
+      "what": "dispute"
+    },
+    {
+      "at": "2026-11-05T21:20:59Z",
+      "by": "reproducer",
+      "run": "work/R-001/runs/02-patched.json",
+      "what": "skeptic_stale"
+    },
+    {
+      "actor": "agent",
+      "at": "2026-11-05T21:20:59Z",
+      "build": "patched",
+      "by": "reproducer",
+      "from": "disputed",
+      "outcome": "NOT_REPRODUCED",
+      "to": "disputed",
+      "what": "check_patched"
+    },
+    {
+      "actor": "human",
+      "at": "2026-11-05T21:43:07Z",
+      "by": "user",
+      "evidence": {
+        "patched": "work/R-001/runs/02-patched.json",
+        "vulnerable": "work/R-001/runs/01-vulnerable.json"
+      },
+      "from": "disputed",
+      "note": "patched build checked",
+      "to": "reproduced",
+      "what": "override"
+    },
+    {
+      "actor": "human",
+      "at": "2026-11-05T21:43:18Z",
+      "by": "user",
+      "from": "reproduced",
+      "note": "confirmed, CVE-2020-14343",
+      "to": "escalated",
+      "what": "escalate"
+    },
+    {
+      "at": "2026-11-05T21:43:18Z",
+      "by": "intake",
+      "what": "notified"
+    }
+  ],
+  "times": {
+    "decided": 1793914998.7934973,
+    "received": 1793912667.325276,
+    "triaged": 1793912667.3301766
+  }
+}

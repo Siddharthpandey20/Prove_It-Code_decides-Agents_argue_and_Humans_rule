@@ -4,6 +4,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from proveit import config, intake
 
@@ -38,7 +39,7 @@ class WorkDirTest(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def make_intake(self):
-        agent = intake.Intake({"agent_name": "prove-it-intake"}, source="test")
+        agent = intake.Intake({"agent_name": "prove-it-intake", "maintainers": ["maintainer"]}, source="test")
         agent.intake, agent.triage = FakeRoom(), FakeRoom()
         self._n = getattr(self, "_n", 0)
         return agent
@@ -56,8 +57,10 @@ class WorkDirTest(unittest.TestCase):
                                                             "thread_id": root, "sender_name": sender,
                                                             "sender_kind": "user"}})
 
-    def say(self, agent, text, sender="maintainer", kind="user"):
-        payload = {"body": text, "message_id": "t", "thread_id": None, "sender_name": sender, "sender_kind": kind}
+    def say(self, agent, text, sender="maintainer", kind="user", message_id=None):
+        self._n = getattr(self, "_n", 0) + 1
+        payload = {"body": text, "message_id": message_id or "t%d" % self._n, "thread_id": None, "sender_name": sender,
+                   "sender_kind": kind}
         if kind == "agent":
             payload["sender"] = "@switch-agent-" + sender
         agent.on_triage_event(None, "message", {"payload": payload})
@@ -72,3 +75,13 @@ def fake_run(outcome, build="vulnerable", entry="full_load", **extra):
            "exception_type": None, "exception_frames": []}
     run.update(extra)
     return run
+
+
+def stub_runs(*outcomes):
+    """Patch the sandbox so successive runs return these outcomes (or run records, for full control)."""
+    runs = iter(outcomes)
+
+    def run_poc(entry, payload, build):
+        nxt = next(runs)
+        return dict(nxt) if isinstance(nxt, dict) else fake_run(nxt, build=build, entry=entry)
+    return mock.patch("proveit.actions.sandbox.run_poc", side_effect=run_poc)

@@ -18,6 +18,7 @@ field, and every message and live ticket created before this change, means
 PyYAML -- so nothing already in flight changes.
 """
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -133,3 +134,92 @@ def for_record(record):
 def buildable():
     """The targets a bare `proveit build` builds (PyYAML only, unless a target opts in)."""
     return [t for t in TARGETS.values() if t.build_by_default]
+
+
+# -- the sqlparse target (U4): a ReDoS in a documented parser -------------
+#
+# sqlparse is a non-validating SQL parser. CVE-2023-30608 (GHSA-rrm6-wvj7-cwh2)
+# is a ReDoS in the string-literal regex, reachable through the documented
+# top-level functions. sqlparse documents nothing as unsafe for untrusted
+# input, so there is no out-of-scope entry-point list (see
+# docs/policy/sqlparse-scope.md); an internal module is simply not on the
+# allowlist. The payload is SQL text; there are no YAML-style tags.
+
+SQLPARSE_ENTRY_POINTS = {
+    "parse": "sqlparse.parse(payload)",
+    "format": "sqlparse.format(payload, reindent=True)",
+    "split": "sqlparse.split(payload)",
+}
+
+_SQLPARSE_EP = re.compile(r"(?:sqlparse\.)?(parse|format|split)\b", re.I)
+
+
+def _sqlparse_parse_entry_point(text):
+    """Map a reporter's entry-point text to an allowlisted sqlparse key.
+
+    Anything that is not one of the three documented functions -- including an
+    internal module such as sqlparse.lexer or sqlparse.engine.* -- is simply
+    not on the allowlist (unknown_entry_point), not "out of scope".
+    """
+    if not text or not text.strip():
+        return None, "no_entry_point"
+    s = text.strip().strip("`").strip()
+    match = _SQLPARSE_EP.match(s)
+    if match and match.group(1).lower() in SQLPARSE_ENTRY_POINTS:
+        return match.group(1).lower(), None
+    return None, "unknown_entry_point"
+
+
+def _sqlparse_out_of_scope_name(text):
+    """sqlparse documents nothing as unsafe, so nothing is out of scope."""
+    return None
+
+
+def _sqlparse_tags(payload):
+    """SQL has no YAML-style tag vocabulary; the ticket carries no tags."""
+    return []
+
+
+SQLPARSE_POC_FORMAT_HELP = (
+    "Send the proof as four fields (an example):\n"
+    "```\n"
+    "affected_version: 0.4.3\n"
+    "entry_point: parse\n"
+    "payload: |\n"
+    "  <SQL>\n"
+    "expected: <what should happen>\n"
+    "actual: <what happens>\n"
+    "```\n"
+    "The proof is data, not code: `entry_point` is one of %s, and `payload` is the SQL text "
+    "(UTF-8, at most %d KB; a ```sql block works too). `affected_version` is required. Python scripts "
+    "are not accepted." % (", ".join("`%s`" % k for k in SQLPARSE_ENTRY_POINTS), config.PAYLOAD_MAX_BYTES // 1024))
+
+
+SQLPARSE = register(Target(
+    key="sqlparse",
+    name="sqlparse",
+    import_name="sqlparse",
+    pypi_name="sqlparse",
+    builds={
+        "vulnerable": {"version": "0.4.3", "image": "proveit-target-sqlparse:vulnerable"},
+        "patched": {"version": "0.4.4", "image": "proveit-target-sqlparse:patched"},
+    },
+    target_dir=config.REPO_ROOT / "target-sqlparse",
+    build_arg="SQLPARSE_VERSION",
+    entry_points=SQLPARSE_ENTRY_POINTS,
+    out_of_scope_names=(),               # sqlparse documents nothing as unsafe
+    payload_max_bytes=config.PAYLOAD_MAX_BYTES,
+    scope_doc="docs/policy/sqlparse-scope.md",
+    fence_langs=("sql",),
+    payload_filename="payload.sql",
+    intake_room="sqlparse-intake",
+    triage_room="sqlparse-triage",
+    poc_format_help=SQLPARSE_POC_FORMAT_HELP,
+    safe_hint="parse, format or split",
+    payload_noun="SQL",
+    _parse_entry_point=_sqlparse_parse_entry_point,
+    _out_of_scope_name=_sqlparse_out_of_scope_name,
+    _tags=_sqlparse_tags,
+    build_by_default=False,              # built only with `proveit build --target sqlparse`
+    lazy_build=False,                    # a missing image is an error, never an auto-build
+))

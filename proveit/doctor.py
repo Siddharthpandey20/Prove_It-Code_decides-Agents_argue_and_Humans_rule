@@ -66,14 +66,22 @@ def check_emulation(r, machine=None, colima_yaml=None):
 
 
 def check_images(r):
-    for name, spec in config.TARGET["builds"].items():
-        try:
-            current = sandbox.image_current(spec["image"])
-        except sandbox.SandboxError as exc:
-            r.add(FAIL, "image %s" % spec["image"], str(exc))
-            continue
-        r.add(PASS if current else FAIL, "image %s (PyYAML %s)" % (spec["image"], spec["version"]),
-              "" if current else "missing or older than the harness; run `python -m proveit build`")
+    from . import targets
+    for target in targets.TARGETS.values():
+        # The default target (PyYAML) must be present; a second target is built
+        # only on request, so a missing image there is a WARN, not a FAIL.
+        missing_level = FAIL if target.build_by_default else WARN
+        build_hint = ("missing or older than the harness; run `python -m proveit build`"
+                      if target.build_by_default else
+                      "missing; build it with `python -m proveit build --target %s`" % target.key)
+        for name, spec in target.builds.items():
+            try:
+                current = sandbox.image_current(spec["image"], target)
+            except sandbox.SandboxError as exc:
+                r.add(missing_level, "image %s" % spec["image"], str(exc))
+                continue
+            r.add(PASS if current else missing_level, "image %s (%s %s)" % (spec["image"], target.name, spec["version"]),
+                  "" if current else build_hint)
 
 
 def check_private_home(r):

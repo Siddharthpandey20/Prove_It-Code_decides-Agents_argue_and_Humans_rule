@@ -81,7 +81,16 @@ def _print(obj):
 
 
 def cmd_build(args):
-    built = sandbox.build(force=args.force, quiet=False)
+    from . import targets
+    if getattr(args, "target", None):
+        chosen = [targets.get(args.target)]
+        if chosen[0].key != args.target:
+            raise SystemExit("unknown target %r; known: %s" % (args.target, ", ".join(targets.TARGETS)))
+    else:
+        chosen = targets.buildable()
+    built = []
+    for target in chosen:
+        built += sandbox.build(force=args.force, quiet=False, target=target)
     print("built: %s" % (", ".join(built) or "nothing (images are current)"))
 
 
@@ -198,7 +207,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog="python -m proveit", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("build"); p.add_argument("--force", action="store_true"); p.set_defaults(fn=cmd_build)
+    p = sub.add_parser("build"); p.add_argument("--force", action="store_true")
+    p.add_argument("--target", help="which target to build (default: the ones built by default, i.e. PyYAML)")
+    p.set_defaults(fn=cmd_build)
     p = sub.add_parser("check")
     p.add_argument("ticket")
     p.add_argument("--build", choices=list(TARGET["builds"]), default="vulnerable")

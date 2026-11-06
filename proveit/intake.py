@@ -283,10 +283,21 @@ class Intake:
         self.skeptic_names = {n.lower() for n in [skeptic, "Prove It Skeptic"] + list(state.get("skeptic_names") or [])}
         self.lock = threading.RLock()
         self.warned_fallback = False  # one warning per run when `sender` is missing
-        self.intake = None   # anything with .post(body, thread_id=None)
-        self.triage = None
+        self.intake = None   # the default (PyYAML) intake room: anything with .post(body, thread_id=None)
+        self.triage = None   # the default (PyYAML) triage room
+        # target key -> (intake_room, triage_room). Filled by start() (C3) or by the
+        # library-2 rehearsal; the default PyYAML pair is self.intake / self.triage.
+        self.pairs = {}
 
     # -- helpers -------------------------------------------------------------
+    def pair(self, target):
+        """The (intake_room, triage_room) a target's reports and tickets use.
+
+        Defaults to the PyYAML pair, so single-room setups and PyYAML are unchanged.
+        """
+        key = target.key if hasattr(target, "key") else (target or targets.DEFAULT_KEY)
+        return self.pairs.get(key, (self.intake, self.triage))
+
     def mention(self):
         return "@" + self.state["agent_name"]
 
@@ -334,9 +345,14 @@ class Intake:
         log.info("Intake is listening in #%s and the room it links to as %r", self.state["intake_room"], TRIAGE_LINK_LABEL)
 
     # -- #proveit-intake -----------------------------------------------------
-    def on_intake_event(self, conn, kind, frame):
+    def on_intake_event(self, conn, kind, frame, target=None):
+        """A message in an intake room. `target` is the library that room serves
+        (the PyYAML default here; bound per room in start(), and set by the
+        library-2 rehearsal). A report's target comes only from its room, never
+        from the reporter's text."""
         if kind != "message":
             return
+        lib = targets.get(target.key if hasattr(target, "key") else target)
         payload = frame["payload"]
         if self.is_self(payload) or self.is_system(payload) or not payload.get("body", "").strip():
             return
@@ -351,10 +367,12 @@ class Intake:
                     self.followup(record, payload)
                 self.handled.add(payload.get("message_id"))
                 return  # a reply in a thread that is not a report is ignored
-            self.new_report(payload)
+            self.new_report(payload, lib)
             self.handled.add(payload.get("message_id"))
 
-    def new_report(self, payload):
+    def new_report(self, payload, lib=None):
+        lib = lib or targets.PYYAML
+        intake_room, triage_room = self.pair(lib)
         text, thread = payload["body"], payload["message_id"]
         if store.find_by_thread(thread):
             # A retry after a failure part-way through: the ticket exists already.
@@ -365,21 +383,21 @@ class Intake:
             open_ = reputation.open_tickets(key)
             if open_:
                 # Decision D-018: one open report at a time. The new report's text is not stored anywhere.
-                self.intake.post(messages.limited_reporter(open_), thread)
-                self.triage.post(messages.limited_notice(reputation.short(key), reputation.get(key)["invalid"]))
+                intake_room.post(messages.limited_reporter(open_), thread)
+                triage_room.post(messages.limited_notice(reputation.short(key), reputation.get(key)["invalid"]))
                 return
         result = screen.screen(text)
-        ticket = reports.parse(text)
-        record = store.create({}, text, source=self.source)
+        ticket = reports.parse(text, lib)
+        record = store.create({"target": lib.key}, text, source=self.source)
         with store.ticket_lock(record["id"]):
             store.save_private_json(record["id"], "contact.json",
                                     {"intake_thread": thread, "reporter": payload.get("sender_name", "unknown"),
                                      "message_id": payload.get("message_id"), "reporter_key": key, "id_source": source})
-            fill(record, ticket)
+            fill(record, ticket, lib)
             if result.blocked:
-                self.quarantine(record, result, thread, "receive")
+                self.quarantine(record, result, thread, "receive", lib)
                 return
-            self.route(record, ticket, thread, "receive")
+            self.route(record, ticket, thread, "receive", lib=lib)
 
     def reporter_key(self, payload):
         """The reporter's HMAC key and which field it came from, or (None, None) (decision D-018)."""
@@ -401,25 +419,29 @@ class Intake:
             reputation.add(contact["reporter_key"], contact.get("id_source"), "invalid")
             record["counted_invalid"] = True
 
-    def quarantine(self, record, result, thread, command):
+    def quarantine(self, record, result, thread, command, lib=None):
+        lib = lib or targets.for_record(record)
+        intake_room, triage_room = self.pair(lib)
         record["screen_rules"] = sorted({f["rule"] for f in result.findings})
         store.save_private_json(record["id"], "screen.json", result.findings)
         store.apply(record, command, "intake", "intake", target="quarantined")
-        self.intake.post(messages.quarantined(record["id"]), thread)
-        self.triage.post(messages.quarantine_notice(record, self.mention()))
+        intake_room.post(messages.quarantined(record["id"]), thread)
+        triage_room.post(messages.quarantine_notice(record, self.mention()))
 
-    def route(self, record, ticket, thread, command, actor="intake", by="intake"):
-        target = target_for(ticket)
-        if target == "invalid_proof":
+    def route(self, record, ticket, thread, command, actor="intake", by="intake", lib=None):
+        lib = lib or targets.for_record(record)
+        intake_room, triage_room = self.pair(lib)
+        state = target_for(ticket)  # the next ticket state, not the library target
+        if state == "invalid_proof":
             self.count_invalid(record)  # saved by apply below
-        store.apply(record, command, actor, by, target=target)
-        if target == "invalid_proof":
-            self.intake.post(messages.invalid_proof(record["id"], ticket.poc_problem, record.get("out_of_scope_entry")), thread)
-        elif target == "awaiting_poc":
-            self.intake.post(messages.ask_for_proof(record["id"], ticket), thread)
+        store.apply(record, command, actor, by, target=state)
+        if state == "invalid_proof":
+            intake_room.post(messages.invalid_proof(record["id"], ticket.poc_problem, record.get("out_of_scope_entry"), lib), thread)
+        elif state == "awaiting_poc":
+            intake_room.post(messages.ask_for_proof(record["id"], ticket, lib), thread)
         else:
-            self.intake.post(messages.accepted(record["id"], ticket.claim), thread)
-            self.triage.post(messages.ticket_posted(record))
+            intake_room.post(messages.accepted(record["id"], ticket.claim, lib), thread)
+            triage_room.post(messages.ticket_posted(record))
             if self.auto_check:
                 threading.Thread(target=self.run_auto_check, args=(record["id"],), daemon=True).start()
 
@@ -428,6 +450,8 @@ class Intake:
             self._followup(store.load(record["id"]), payload)
 
     def _followup(self, record, payload):
+        lib = targets.for_record(record)
+        intake_room, _ = self.pair(lib)
         contact = store.load_private_json(record["id"], "contact.json")
         thread = contact.get("intake_thread")
         sender = payload.get("sender_name", "")
@@ -435,23 +459,24 @@ class Intake:
             self.foreign_reply(record, payload, thread)
             return
         if record["status"] not in ("awaiting_poc", "invalid_proof"):
-            self.intake.post("%s is %s. A maintainer will reply in this thread." % (
+            intake_room.post("%s is %s. A maintainer will reply in this thread." % (
                 record["id"], record["status"].replace("_", " ")), thread)
             return
         text = payload["body"]
         store.append_report(record["id"], text)
         result = screen.screen(text)
-        merged = reports.merge(ticket_from_record(record), text)
-        fill(record, merged)
+        merged = reports.merge(ticket_from_record(record), text, lib)
+        fill(record, merged, lib)
         if result.blocked:
-            self.quarantine(record, result, thread, "followup")
+            self.quarantine(record, result, thread, "followup", lib)
             return
-        self.route(record, merged, thread, "followup")
+        self.route(record, merged, thread, "followup", lib=lib)
 
     def foreign_reply(self, record, payload, thread):
         """Decision D-008: only the original reporter completes a report. Someone else's reply in the
         thread changes nothing; it is kept privately for maintainers and counted in the ticket."""
         import hashlib
+        intake_room, triage_room = self.pair(targets.for_record(record))
         text = payload.get("body", "")
         foreign = store.load_private_json(record["id"], "foreign.json") or {"replies": []}
         foreign["replies"].append({"sender": payload.get("sender_name", "unknown"), "message_id": payload.get("message_id"),
@@ -463,8 +488,8 @@ class Intake:
             fresh["foreign_replies"] = len(foreign["replies"])
             store.event(fresh, "foreign_reply_ignored", "intake")
             store.save(fresh)
-        self.intake.post(messages.foreign_reply(record["id"]), thread)
-        self.triage.post(messages.foreign_reply_notice(record["id"], len(foreign["replies"])))
+        intake_room.post(messages.foreign_reply(record["id"]), thread)
+        triage_room.post(messages.foreign_reply_notice(record["id"], len(foreign["replies"])))
 
     def run_auto_check(self, ticket_id):
         """Developer/test mode only: Intake runs the vulnerable-build check itself, labelled as such."""

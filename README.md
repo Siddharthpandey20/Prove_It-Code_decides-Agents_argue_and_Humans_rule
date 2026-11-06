@@ -89,10 +89,12 @@ Remove Switch and the workflow has no shared rooms for the reporter, the maintai
 
 A report is attacker-controlled text that ends up near agents that can run commands.
 
-1. **Switch Trust** (primary; verified live on 2026-11-06): Switch checks every human message against our guardrail policy before it enters a room. A blocked message never becomes a room message, so neither Intake nor any agent receives it. Mattermost still shows the post to people, and Switch replies in its thread: "Your message was blocked by Switch Trust". Our policy is two regex patterns with the action Block, for people's messages only. Switch's Jailbreak detector is left off: in our test it also blocked report 02's proof, because a bug report's proof describes an attack. Nothing is set to Redact, because redaction would change a payload and its SHA-256. Limits:
+1. **Switch Trust** (the first wall; verified live on 2026-11-06): Switch checks every human message against our guardrail policy before it enters a room. A blocked message never becomes a room message, so neither Intake nor any agent receives it. Mattermost still shows the post to people, and Switch replies in its thread: "Your message was blocked by Switch Trust". Our policy is two regex patterns with the action Block, for people's messages only. Switch's Jailbreak detector is left off: in our test it also blocked report 02's proof, because a bug report's proof describes an attack. Nothing is set to Redact, because redaction would change a payload and its SHA-256. Limits:
    - The text of every human message goes to Switch Trust's cloud service to be checked.
    - Messages with a file attached are not checked.
    - If Trust cannot be reached, messages pass with a note that they were not fully checked.
+
+   Two fixed phrases are easy to reword past, like the regex screen in item 3, so the protection that holds is item 2: agents only ever see fixed fields.
 
    Steps: [docs/SETUP.md](docs/SETUP.md#5-turn-on-switch-trust). Evidence: [docs/evidence/live-trust-2026-11-06-windows.log](docs/evidence/live-trust-2026-11-06-windows.log).
 2. **Evidence only** (the backstop): agents never receive reporter text. `ticket.json`, run records, the evidence pack, every message Intake posts to triage and every command's output contain only fixed fields: ids, allowlisted entry points, hashes, sizes, outcome classes, numbers, PyYAML function names, exception type names plus a hash of the message, and YAML tags that match known PyYAML tags (anything else shows as `unknown-tag:<hash>`). Reporter text stays in `work/<id>/private/`, which the agents are denied. A canary test checks this end to end.
@@ -106,7 +108,7 @@ A report is attacker-controlled text that ends up near agents that can run comma
 
 | Tool | Version | Tested with |
 | --- | --- | --- |
-| Python | 3.9 or newer, standard library only (nothing to `pip install`) | 3.13.1 (Windows 11), 3.12 (CI on Ubuntu 24.04) |
+| Python | 3.9 or newer, standard library only (nothing to `pip install`) | 3.13.3 (Windows 11), 3.12 (CI on Ubuntu 24.04) |
 | Docker | Docker Desktop or Docker Engine | Docker 29.6.2 (Docker Desktop on Windows 11), GitHub Actions `ubuntu-24.04` |
 | Switch server | 0.31.0 | 0.31.0 via `scripts/switch-server.sh` (headless) |
 | Switch Console | for the full demo | 0.40.1 on Windows 11, with its local Switch server (0.31.0) |
@@ -122,11 +124,11 @@ The sandbox image is `python:3.9-slim`, pinned by digest. Python 3.9 is end of l
 ```sh
 git clone https://github.com/akhilll0305/team-pikachu-switch-ai && cd team-pikachu-switch-ai
 python -m proveit build                      # builds proveit-target:vulnerable and :patched (needs network once)
-python -m unittest discover -s tests -v      # 74 tests, about a minute; Docker must be running
+python -m unittest discover -s tests -v      # 167 tests, about a minute; Docker must be running
 python scripts/rehearse.py --twice           # replays all four reports twice and compares
 ```
 
-Expected: the tests end with `Ran 74 tests ... OK`. If Docker is not running, the 19 sandbox tests are skipped and the output says `skipped`; that is not a pass. The 3 tests in `tests/test_agent_rules.py` check the Skeptic's Codex rules and skip only when the Codex CLI is not installed (as on CI); that skip is expected. The rehearsal ends with:
+Expected on Windows 11 (2026-11-06): `Ran 167 tests ... OK (skipped=11)`. Those 11 skips need macOS or Linux (the harness's own classification tests, POSIX file permissions, Codex's sandbox profile) and say so. If Docker is not running, the sandbox tests are skipped as well and the skip count goes up; that is not a pass. The tests in `tests/test_agent_rules.py` check the Skeptic's Codex rules and skip when the Codex CLI is not installed (as on CI); that skip is expected. The rehearsal ends with:
 
 ```
 **Tally:** 4 reports. By status: 2 closed, 1 escalated, 1 quarantined. By outcome: 1 CODE_EXECUTION, 2 NOT_REPRODUCED, 1 not run. ...

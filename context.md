@@ -2,7 +2,7 @@
 
 > **Role:** Shared source of truth for Team Pikachu and AI agents during the Flip the Switch hackathon. Read this before changing the project; use the linked files for operational detail.
 
-Last reviewed: 2026-11-06 (IST). Status combines the repository at `7b42217` with the team's answers on 2026-11-05. A recorded result is not a claim that it was rerun today.
+Last reviewed: 2026-11-07 (IST), on branch `feat/openssf-triage` (based on `main` at `5f1672e`). Status combines the repository with the team's answers on 2026-11-05 to 2026-11-07. A recorded result is not a claim that it was rerun today.
 
 ## Project overview
 
@@ -59,6 +59,7 @@ The following rules govern all hackathon work:
 - U1d done: the proof request asks for four fields (`affected_version`, `entry_point`, `payload`, `expected`/`actual`). `affected_version` is required before a ticket reaches triage (D-016). Replays 01 to 04 carry the fields; 01's version is the advisory's "before 5.4". Evidence: `tests/test_report_fields.py`.
 - U2 done: a successful `escalate` writes a DRAFT advisory pack to `work/R-NNN/advisory/` (OSV draft, GHSA draft, timeline). It has no payload and no reporter prose, and it is included in the export (D-017). Evidence: `tests/test_advisory.py`. The schema test needs the optional `jsonschema` and skips without it. It passed once with jsonschema 4.26.0 in a throwaway virtual environment on 2026-11-07.
 - U3 done: a proof record per reporter (outcomes only, HMAC-keyed, in the private folder). At 2 failed proofs a reporter may have one open report at a time until a maintainer runs `clear-reporter` (D-018). The rehearsal shows the limit on purpose in its step 6. Evidence: `tests/test_reputation.py`.
+- U5 done: the README (who pays, the OpenSSF practices table with a source on every row, verification rows, commands), DEMO (re-timed to 3:00, the new scenes marked "needs a live run before recording"), SETUP (settings, test count, redeploying the Skeptic), the blog draft and a draft OpenSSF comment (`docs/outreach/`, not posted). On this machine: 266 tests OK (12 skips: the 11 Unix-only ones and the optional OSV schema test), rehearsal twice identical.
 
 **Merging `feat/openssf-triage` changes live behaviour.** The live Skeptic's current free-text disputes will be refused. Before using it live: paste the new Skeptic instructions from `switch/prove-it.template.yaml` into the Console agent, check the revision log, and do a full live run.
 
@@ -70,7 +71,8 @@ The following rules govern all hackathon work:
 - The advisory note in triage after `escalate`, and the pack's files on disk.
 - The reporter limit and `clear-reporter` in the room, and whether Switch 0.31.0 sends `sender` for human messages (`id_source` in `reporters.json` shows which field was used).
 
-**Next action:** Merge `feat/switch-trust` into `fix/checkpoint-2026-11-05` if the team accepts it.
+**Next action:** Review the pull request for `feat/openssf-triage` (opened by hand; text in the worktree's `docs/PR-openssf-triage.md`, not committed). `feat/switch-trust` and `fix/checkpoint-2026-11-05` are already merged into `main` (PRs #2 and #3).
+- Merging changes live behaviour (above). Either record the video from `main` as it is now, or merge, paste the new Skeptic instructions, and do a full live run first.
 - To reset: stop Intake, delete `work/` and the `private` folder (see DEMO), then run `python -m proveit.intake run` in your own terminal.
 - Record the demo video by Nov 7 (attack scene with Trust: DEMO.md), and submit by **Nov 7, 11:59 PM IST**.
 - Optional: the live permission probes (CHECKPOINT J5).
@@ -80,12 +82,12 @@ The following rules govern all hackathon work:
 | Item | Status | Owner | Done when / evidence |
 | --- | --- | --- | --- |
 | Data-only proof sandbox, evidence-only routing, state machine | Done | Historical team work | Implementation and tests in Git; see decisions and history below. |
-| Offline tests and four-report rehearsal | Recorded as passing | Unassigned | Latest README reports 74 tests and a two-run rehearsal; rerun on the final demo machine and record the actual result. |
+| Offline tests and four-report rehearsal | Passing on the Windows demo machine | Unassigned | `main` (2026-11-06): 167 tests OK, 11 skips. `feat/openssf-triage` (2026-11-07): 266 tests OK, 12 skips; rehearsal twice identical. Per-commit digests are in that branch's commit messages. |
 | Headless Switch/Mattermost end-to-end | Done | Historical team work | [2026-11-05 log](docs/evidence/e2e-2026-11-05.log) records `E2E PASSED`. This uses scripted agent choices. |
 | Live Claude Code + Codex in Switch Console | Done 2026-11-06 | Unassigned (run on the Windows demo machine) | Windows 11, Console 0.40.1, Claude Code 2.1.318, Codex 0.166.0; every demo step ran live. [Room log](docs/evidence/live-console-2026-11-06-windows.log). |
 | Agent permissions on the demo machine | Partly verified | Unassigned | Done: Bypass permissions off for both, checkout trusted by Claude Code and Codex, agents ran only `proveit` commands. Not done: asking an agent to read `~/.proveit` or run a forbidden command (CHECKPOINT J5). Codex's sandbox profile tests skip on Windows. |
 | Switch Trust guardrail and replay 04 | Done 2026-11-06 | Unassigned (run on the Windows demo machine) | Regex-only policy (SETUP §5): 04 blocked before the room; every legitimate message unchanged. [Trust log](docs/evidence/live-trust-2026-11-06-windows.log). Intake's quarantine remains the second wall. Trust's red-team eval (CHECKPOINT M2) not run. |
-| OpenSSF triage practices (branch `feat/openssf-triage`) | In progress; verified offline, not yet live | Unassigned | Items U1a to U5 in [CHECKPOINT O](docs/CHECKPOINT.md#o-openssf-triage-practices-branch-featopenssf-triage). A live run in the room is still needed for each. |
+| OpenSSF triage practices (branch `feat/openssf-triage`) | Done offline (U1a to U5); not yet live, not merged | Unassigned | Items U1a to U5 in [CHECKPOINT O](docs/CHECKPOINT.md#o-openssf-triage-practices-branch-featopenssf-triage). A live run in the room is still needed for each. |
 | Public repo and accurate README | Repo exists; final review pending | Unassigned | Confirm public access and update verification claims after the live run. |
 | Short demo video | Deferred from immediate priorities; required for submission | Unassigned | Record the running workflow and include its link in the submission by **Nov 7, 11:59 PM IST**. |
 | Submit Track 01 entry | Pending | Unassigned | Submit the public repo, README, and video by **Nov 7, 11:59 PM IST**; record confirmation. |
@@ -133,6 +135,7 @@ All dated entries below are **2026-11-05 IST** unless noted. Commit links are gi
 | Nov 5, `c1b36bb`, merged by `7b42217` | Review found a child-forged `MemoryError`, overly broad Skeptic file reads, and a follow-up that erased a saved payload. | Fixed classification, permission rules, and follow-up merging; added tests. The latest README reports 74 tests. |
 | Nov 6, Windows 11 demo machine | Live Console run. Problems met and fixed: `proveit build` crashed on the Windows console encoding; the template's `location: local` and provider fallback lists left Claude/Codex "Not supported here" on a Console with managed agents; Console's checkout box doubled paths; a stale process id (`kill EPERM`) kept the agents controller from reporting; Mattermost's container stopped after a Docker restart; the Skeptic disputed sound NOT_REPRODUCED results. | Fixed in code, template (`location: [$first]`, single provider defaults, Skeptic verdict rules) and SETUP troubleshooting; added `switch/prove-it.rooms.template.yaml`. A WSL/SSH-host route was tried first and is not needed. Two human messages never reached Intake (Switch side, cause unknown); resending worked. |
 | Nov 6 afternoon, `feat/switch-trust` | Switch Trust test. Before it: no Mattermost message reached Switch, because WSL's `networkingMode=mirrored` made IPv6 `localhost` hang and the server's websocket to Mattermost timed out. After the reconnect, Switch re-created the agents' bot accounts outside private triage, and their posts were refused until `/invite`. Run 1 (Jailbreak + Regex) blocked 04 and also report 02's proof. Run 2 (Regex only) blocked only 04. The SETUP regex `ignore (all \|your \|previous )+...` never matched 04, because of a line break. | Mirrored mode turned off; SETUP troubleshooting rows added; regex fixed with `\s+`; Jailbreak left off (D-010). Trust verified with the Regex-only policy. |
+| Nov 7, `feat/openssf-triage` | OpenSSF-aligned triage (U1a to U5) built in a separate worktree, so the live checkout was untouched. Three things in the brief met the sources or the code: (1) issue #178 itself has no list of practices: they come from comments and the working group's draft guide; (2) the official OSV schema rejects the ID `DRAFT-PROVEIT-R-NNN`; (3) the brief's ghsa-draft with the payload would have put reporter material in the agent-readable `work/`. Also: the existing info-leak test caught a derived "did not reproduce" question on an info-leak close; the new reporter limit tripped two old tests that posted many rejected proofs from one reporter. | README rows cite their source per row (team choice); the OSV ID is `x_DRAFT-PROVEIT-R-NNN` (team choice); the pack names the payload by hash only (team choice); info-leak closes derive no question; those tests now use one reporter per case. All verified offline; nothing new claimed live. |
 
 ## Open questions and risks
 

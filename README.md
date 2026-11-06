@@ -4,11 +4,20 @@
 
 **Code decides, agents argue, humans rule.** The verdict comes from deterministic sandbox evidence, never from a language model's opinion. The agents run the investigation, challenge the evidence and explain it in the room. A maintainer makes every final call.
 
+**We don't detect AI. We require proof.**
+
 Built by Team Pikachu for the [Flip the Switch hackathon](https://www.wemakedevs.org/hackathons/switch), Track 1: Best Business Workflow. MIT licensed.
 
 ## The problem
 
 Writing a plausible vulnerability report now takes an AI ten seconds. Checking one still takes a maintainer an hour. In 2026 that imbalance started shutting programs down: curl [ended its bug bounty](https://www.theregister.com/2026/01/21/curl_ends_bug_bounty/) in January after its confirmed-vulnerability rate fell below 5%, then [stopped accepting security reports for July](https://curl.se/dev/security.html). HackerOne [paused its Internet Bug Bounty](https://www.csoonline.com/article/4154216/internet-bug-bounty-program-hits-pause-on-payouts-2.html). Elastic [received more reports in six months than in 2024 and 2025 combined](https://www.elastic.co/security-labs/ai-vulnerability-triage-bug-bounty-hackerone) and built its own AI triage.
+
+## Who pays for this
+
+- Elastic's HackerOne program "received over 1,390 reports" in the first half of 2026, and "a senior security engineer spends 30 to 60 minutes on a typical report" ([Elastic Security Labs](https://www.elastic.co/security-labs/ai-vulnerability-triage-bug-bounty-hackerone), 2026-08-04).
+- Elastic's own AI triage costs "roughly $2" per report and agrees with its engineers 85% of the time over 764 known-outcome reports. Those are Elastic's figures, for Elastic's system. Prove It's agent cost is **not recorded** unless a maintainer records it with `proveit cost`.
+- In a survey of 229 open-source practitioners ([arXiv 2607.04003](https://arxiv.org/html/2607.04003v1)), the strategies rated by likelihood of adopting included tighter CI-based quality gates (73%), no-review cutoffs for red-flagged submissions (71%) and grounding trust in verified identity or endorsement (39%). The paper labels these "Responses%" without saying which ratings it counted.
+- Under the EU Cyber Resilience Act, non-compliance with the essential requirements in Annex I and the obligations in Articles 13 and 14 (Article 14 is the reporting duty, from 11 September 2026) "shall be subject to administrative fines of up to EUR 15 000 000" or 2.5% of worldwide annual turnover, whichever is higher ([Regulation (EU) 2024/2847, Art. 64(2)](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32024R2847)). This is not legal advice.
 
 Prove It is a Switch workflow a small team can run. The reporter has to supply a proof that runs. The proof runs in a sandbox. Two agents from different vendors explain and challenge the evidence. A maintainer decides with one message, and the reporter hears back in their own thread.
 
@@ -31,11 +40,11 @@ flowchart LR
 ```
 
 1. **A report arrives** in `#proveit-intake`. Intake (our own agent on the Switch agent protocol, plain Python with no language model) screens it, then asks for a proof if there is none.
-2. **The proof is data, not code:** one allowlisted PyYAML entry point plus a YAML payload. Python scripts and the loaders PyYAML documents as unsafe are refused before anything runs (`invalid_proof`).
+2. **The proof is data, not code:** four fields (`affected_version`, `entry_point`, `payload`, `expected`/`actual`), where the entry point is allowlisted and the payload is YAML. Python scripts and the loaders [the scope policy](docs/policy/pyyaml-scope.md) rules out are refused before anything runs (`invalid_proof`). Without an affected version the report waits.
 3. **Intake posts a ticket** to the room its intake room links to as `triage`: claim, claimed severity, entry point, payload SHA-256, size and known YAML tags. No title, no reporter name, no reporter prose.
-4. **A maintainer asks the Reproducer** (Claude Code) to check it. `python -m proveit check R-001` runs the vulnerable build only and sets the ticket to `reproduced` or `not_reproduced`.
-5. **The Skeptic** (Codex) reads `python -m proveit evidence R-001`, works through a checklist, and ends with `concur` or `dispute`. A dispute blocks escalation until a maintainer overrides it.
-6. **The maintainer steers and decides:** asks for the patched build (`check R-001 --build patched`) or another loader, then tells Intake `escalate`, `close` or `override`. Intake tells the reporter, in their thread, exactly what the evidence showed.
+4. **A maintainer asks the Reproducer** (Claude Code) to check it. `python -m proveit check R-001` runs the vulnerable build only, 3 times in fresh containers, and sets the ticket to `reproduced`, `not_reproduced`, or `not_reliably_reproduced` when the runs disagree.
+5. **The Skeptic** (Codex) reads `python -m proveit evidence R-001`, works through a checklist, and ends with `concur` or `dispute <reason_code>`. A dispute blocks escalation until a maintainer overrides it.
+6. **The maintainer steers and decides:** asks for the patched build (`check R-001 --build patched`) or another loader, then tells Intake `escalate`, `close` or `override`. Intake tells the reporter, in their thread, exactly what the evidence showed, and on a close asks one fixed question. An escalate also writes a DRAFT advisory pack.
 
 ## Proofs are data, so the result can't be faked
 
@@ -52,10 +61,15 @@ An audit of the first version showed a PoC that is Python code can fake its own 
 | `RESOURCE_EXHAUSTION` | The call ran past 10 s or 192 MB. Lower severity, never code execution |
 | `NOT_REPRODUCED` | The call returned or raised normally |
 | `INVALID_PROOF` | Not run: Python code, an unsafe or unknown entry point, or a payload that is too large or not UTF-8 |
+| `NOT_RELIABLY_REPRODUCED` | A check's clean runs disagreed (for example `CODE_EXECUTION 2/3, NOT_REPRODUCED 1/3`). Not an outcome of one run: escalating it needs a maintainer's override |
+
+Every check runs the payload 3 times (`CHECK_RUNS` in `proveit/config.py`), one after another, each in a new container with the same limits; the evidence says "3/3 clean runs" and names the Docker image ID. If Docker cannot start a run, the check records nothing. Verified offline, not yet live.
 
 The child's own report (exception type, PyYAML call stacks) is untrusted: the parent keeps only values on allowlists built from PyYAML's own source, and the outcome never depends on it. A result that reproduces on both builds is flagged "possible new issue, human review required" and is never escalated automatically.
 
 ### What the replays give (from `python scripts/rehearse.py`)
+
+Each result below is 3/3 clean runs.
 
 | Replay | PyYAML 5.3.1 | PyYAML 5.4 | Ends |
 | --- | --- | --- | --- |
@@ -64,7 +78,28 @@ The child's own report (exception type, PyYAML call stacks) is untrusted: the pa
 | 03 "Billion laughs" in `safe_load` (synthetic slop) | `NOT_REPRODUCED` (finishes in well under a second) | not run | closed |
 | 04 Instructions to AI reviewers hidden in an HTML comment | not run: quarantined | not run | quarantined; escalation refused |
 
-The rehearsal has no Switch server, so Intake's own screen quarantines replay 04. In Switch with Trust configured, 04 is blocked before it enters the room, so no ticket is created and the tally counts three reports.
+The rehearsal then shows the reporter limit on purpose (its step 6): every replay posts as one reporter, 02 and 03 did not reproduce, so a second open report from that reporter is refused until a maintainer runs `clear-reporter`. The rehearsal has no Switch server, so Intake's own screen quarantines replay 04. In Switch with Trust configured, 04 is blocked before it enters the room, so no ticket is created and the tally counts three reports.
+
+## Practices from the OpenSSF AI-slop discussion
+
+[OpenSSF issue #178](https://github.com/ossf/wg-vulnerability-disclosures/issues/178) ("AI-SLOP: Develop best current practises for Open Source maintainers") collects practices for handling AI-written reports. Its working group's draft guide is a separate document linked from the issue (["Existing Practices for Responding to AI-Slop"](https://docs.google.com/document/d/1csseaiMVQeILSPjx3BvpCBH88PifgPf_ebXVKD5DIOs), headed for issue #179). Prove It follows the practices below. Each row names where the practice comes from. Prove It is not certified, endorsed or reviewed by OpenSSF.
+
+| Practice, in its source's words | How Prove It implements it | Evidence |
+| --- | --- | --- |
+| "Dynamic proof is mandatory" (comment by north-echo, 2 Sep 2026); "Proof of concept (PoC)" required (working-group draft) | No runnable data-only proof, no ticket in triage | `tests/test_poc.py`, `tests/test_intake.py` (`Forwarding`) |
+| "Reproduce N times from clean state, or it doesn't exist" (north-echo) | 3 sequential runs in fresh containers; runs that disagree give `NOT_RELIABLY_REPRODUCED` | `tests/test_repeats.py` |
+| "Positive and negative controls on every test" (north-echo) | Partly: the same payload runs on the vulnerable 5.3.1 and the patched 5.4, each n/N. A failed control does not void the run automatically; a result that also reproduces on 5.4 is flagged for a human | `tests/test_evidence.py`, `tests/test_reasons.py` |
+| "Verify the runner's own tally" (north-echo) | The harness's parent decides the outcome from what it observes; the child's own report is untrusted | `tests/test_sandbox.py` (`AuditCheats`) |
+| "Publish a Threat Model"; a SECURITY.md with "Scope" and "Out of scope" (working-group draft) | [docs/policy/pyyaml-scope.md](docs/policy/pyyaml-scope.md), enforced at Intake before any sandbox run | `tests/test_scope.py` |
+| "Steps to reproduce ... including version" (working-group draft); stating "affected-version" up front (comment by Santoshkumarpuppala, 11 Aug 2026) | The proof request asks for four fields; `affected_version` is required | `tests/test_report_fields.py` |
+| A templated rejection naming "the specific missing element" (working-group draft); "for each shape, the one question that resolves it" (Santoshkumarpuppala, 21 Aug 2026) | Reason codes, each with at most one fixed question, sent only when a maintainer closes | `tests/test_reasons.py` |
+| "Managing Repeat Submitters" and "signal requirements" (working-group draft); "Banning repeat offenders" listed as under discussion (issue) | A proof record per reporter, outcomes only: after 2 failed proofs, one open report at a time. Never a ban | `tests/test_reputation.py` |
+| "publish an advisory with explicit affected-version ranges" (working-group draft) | Partly: escalate writes a DRAFT OSV/GHSA pack with the exact tested version; no range or fixed version is claimed | `tests/test_advisory.py` |
+| "A human gates every external send" (north-echo); human-in-the-loop accountability (issue) | Only maintainers decide; reporter messages are fixed text plus recorded results plus the maintainer's note | `tests/test_roles.py`, `tests/test_states.py` |
+| "There is no reliable technical indicator for AI-generated content" (issue) | No AI detection anywhere | none needed |
+| An executive summary, an exploitability analysis, a scope confirmation and AI-tool disclosure in each report (working-group draft) | **Not implemented** | |
+| "Compute CVSS" (north-echo) | **Not implemented**: the claimed severity is only checked against the outcome class | |
+| Rate limits and CAPTCHAs for automated reporting (issue, recommendations for platforms) | **Not implemented**: these belong to the platform; Switch Trust screens messages | |
 
 ## Why Switch is the heart of it
 
@@ -98,7 +133,7 @@ A report is attacker-controlled text that ends up near agents that can run comma
    Two fixed phrases are easy to reword past, like the regex screen in item 3, so the protection that holds is item 2: agents only ever see fixed fields.
 
    Steps: [docs/SETUP.md](docs/SETUP.md#5-turn-on-switch-trust). Evidence: [docs/evidence/live-trust-2026-11-06-windows.log](docs/evidence/live-trust-2026-11-06-windows.log).
-2. **Evidence only** (the backstop): agents never receive reporter text. `ticket.json`, run records, the evidence pack, every message Intake posts to triage and every command's output contain only fixed fields: ids, allowlisted entry points, hashes, sizes, outcome classes, numbers, PyYAML function names, exception type names plus a hash of the message, and YAML tags that match known PyYAML tags (anything else shows as `unknown-tag:<hash>`). Reporter text stays in `work/<id>/private/`, which the agents are denied. A canary test checks this end to end.
+2. **Evidence only** (the backstop): agents never receive reporter text. `ticket.json`, run records, the evidence pack, every message Intake posts to triage and every command's output contain only fixed fields: ids, allowlisted entry points, hashes, sizes, outcome classes, numbers, PyYAML function names, exception type names plus a hash of the message, and YAML tags that match known PyYAML tags (anything else shows as `unknown-tag:<hash>`). Reporter text stays in `~/.proveit/<checkout>-<hash>/private/`, outside the checkout, which the agents are denied. A canary test checks this end to end.
 3. **The regex screen** (a fallback): Intake quarantines text written *to* AI reviewers (hidden HTML, "ignore your instructions", "print your environment", `curl ... | sh`). It is easy to paraphrase past; a test shows a paraphrased injection still never reaches an agent because of layer 2.
 4. **The sandbox**: no network, read-only filesystem, 256 MB memory, 64 processes, no Linux capabilities, non-root user, 20 s container timeout, and the payload is data.
 5. **Agent permissions**: each triage agent starts in its own folder with a lockdown: [agents/reproducer/.claude/settings.json](agents/reproducer/.claude/settings.json) (Claude Code) and [agents/skeptic/.codex/](agents/skeptic/.codex/) (Codex). They allow only the `python -m proveit` commands each agent needs, and the CLI refuses human-only commands from agents. **"Bypass permissions" must stay off** for both agents in Switch Console. Details: [agents/README.md](agents/README.md).
@@ -110,7 +145,7 @@ A report is attacker-controlled text that ends up near agents that can run comma
 | Tool | Version | Tested with |
 | --- | --- | --- |
 | Python | 3.9 or newer, standard library only (nothing to `pip install`) | 3.13.3 (Windows 11), 3.12 (CI on Ubuntu 24.04) |
-| Docker | Docker Desktop or Docker Engine | Docker 29.6.2 (Docker Desktop on Windows 11), GitHub Actions `ubuntu-24.04` |
+| Docker | Docker Desktop or Docker Engine | Docker 29.9.2 (Docker Desktop on Windows 11, 2026-11-07), GitHub Actions `ubuntu-24.04` |
 | Switch server | 0.31.0 | 0.31.0 via `scripts/switch-server.sh` (headless) |
 | Switch Console | for the full demo | 0.40.1 on Windows 11, with its local Switch server (0.31.0) |
 | Claude Code | Reproducer | 2.1.318, live in a Console room on Windows 11 |
@@ -125,11 +160,11 @@ The sandbox image is `python:3.9-slim`, pinned by digest. Python 3.9 is end of l
 ```sh
 git clone https://github.com/akhilll0305/team-pikachu-switch-ai && cd team-pikachu-switch-ai
 python -m proveit build                      # builds proveit-target:vulnerable and :patched (needs network once)
-python -m unittest discover -s tests -v      # 167 tests, about a minute; Docker must be running
+python -m unittest discover -s tests -v      # 266 tests, about a minute and a half; Docker must be running
 python scripts/rehearse.py --twice           # replays all four reports twice and compares
 ```
 
-Expected on Windows 11 (2026-11-06): `Ran 167 tests ... OK (skipped=11)`. Those 11 skips need macOS or Linux (the harness's own classification tests, POSIX file permissions, Codex's sandbox profile) and say so. If Docker is not running, the sandbox tests are skipped as well and the skip count goes up; that is not a pass. The tests in `tests/test_agent_rules.py` check the Skeptic's Codex rules and skip when the Codex CLI is not installed (as on CI); that skip is expected. The rehearsal ends with:
+Expected on Windows 11 (2026-11-07): `Ran 266 tests ... OK (skipped=12)`. 11 of those skips need macOS or Linux (the harness's own classification tests, POSIX file permissions, Codex's sandbox profile) and say so; the 12th is the OSV schema test, which needs the optional `jsonschema` package. If Docker is not running, the sandbox tests are skipped as well and the skip count goes up; that is not a pass. The tests in `tests/test_agent_rules.py` check the Skeptic's Codex rules and skip when the Codex CLI is not installed (as on CI); that skip is expected. The rehearsal ends with:
 
 ```
 **Tally:** 4 reports. By status: 2 closed, 1 escalated, 1 quarantined. By outcome: 1 CODE_EXECUTION, 2 NOT_REPRODUCED, 1 not run. ...
@@ -166,27 +201,30 @@ The manual GUI steps are: start the server in Console, sign in Claude Code and C
 
 | Command | Who | What it does |
 | --- | --- | --- |
-| `python -m proveit check R-001` | Reproducer, maintainer | Run the payload on the vulnerable build; sets `reproduced` or `not_reproduced` |
+| `python -m proveit check R-001` | Reproducer, maintainer | Run the payload on the vulnerable build 3 times in fresh containers; sets `reproduced`, `not_reproduced` or `not_reliably_reproduced` |
 | `python -m proveit check R-001 --build patched` | Reproducer, maintainer | Run on the patched build, only when someone asks |
 | `python -m proveit check R-001 --loader safe_load` | Reproducer, maintainer | Run through another allowlisted entry point |
 | `python -m proveit evidence R-001` | anyone | The evidence pack and the Skeptic's checklist |
-| `python -m proveit concur R-001` / `dispute R-001 --reason "..."` | Skeptic, maintainer | Record the Skeptic's conclusion; a dispute blocks escalation |
+| `python -m proveit concur R-001` / `dispute R-001 --code <reason_code> [--note "..."]` | maintainer (agents post in the room) | Record a verdict; a dispute blocks escalation |
 | `python -m proveit override R-001 --by NAME` | maintainer only | Clear a dispute (recorded) |
 | `python -m proveit cost R-001 --usd 0.12 --source "Switch ROI"` | maintainer only | Record agent cost from a real source; never estimated |
 | `python -m proveit list` / `show R-001` / `tally` | anyone | Tickets, one ticket record, totals |
-| `@prove-it-intake escalate R-001 [note]` / `close R-001 <reason>` | maintainer in the room | Decide; Intake tells the reporter |
+| `@prove-it-intake escalate R-001 [note]` | maintainer in the room | Decide; Intake tells the reporter and writes the DRAFT advisory pack |
+| `@prove-it-intake close R-001 [reason=<code>] <note>` | maintainer in the room | Close; the reporter gets one fixed question (the code's, else the standing dispute's, else the evidence's) |
+| `@prove-it-intake concur R-001` / `dispute R-001 <reason_code> [note]` | Skeptic (or a maintainer) in the room | Record a verdict. Codes: `not_reproduced`, `not_clean_reproducible`, `also_on_patched`, `out_of_scope_api`, `outcome_mismatch`, `severity_overclaimed`, `version_missing`, `patched_not_checked`. The note stays in triage |
+| `python -m proveit clear-reporter <key>` / `@prove-it-intake clear-reporter <key>` | maintainer only | Lift a reporter's one-open-report limit |
 | `@prove-it-intake override R-001` / `release R-001` | maintainer in the room | Clear a dispute / send a quarantined report on |
 | `@prove-it-intake evidence R-001` / `status` / `tally` | anyone in triage | Post the evidence pack, the ticket list, the totals |
 
-Agents run the CLI with `PROVEIT_ACTOR=agent` (set by their configs), and then `override` and `cost` refuse. In the room, Intake refuses `escalate`, `close`, `override` and `release` from agent senders.
+Agents run the CLI with `PROVEIT_ACTOR=agent` (set by their configs), and then `override`, `cost` and `clear-reporter` refuse. In the room, Intake refuses `escalate`, `close`, `override`, `release` and `clear-reporter` from agent senders.
 
 ### Ticket states
 
-One table in [proveit/states.py](proveit/states.py) is enforced by every command: `awaiting_poc`, `quarantined`, `invalid_proof`, `in_triage`, `reproduced`, `not_reproduced`, `disputed`, `escalated`, `closed`. A quarantined report can never be escalated. A disputed one can't be escalated until a maintainer overrides, and a new check does not clear a dispute. Only humans escalate, close, release or override.
+One table in [proveit/states.py](proveit/states.py) is enforced by every command: `awaiting_poc`, `quarantined`, `invalid_proof`, `in_triage`, `reproduced`, `not_reproduced`, `not_reliably_reproduced`, `disputed`, `escalated`, `closed`. A quarantined report can never be escalated. A disputed one can't be escalated until a maintainer overrides, and a new check does not clear a dispute. A `not_reliably_reproduced` one needs an override too; a concur is not enough. One override lifts every block the ticket has, and records which. Only humans escalate, close, release or override.
 
 ### The tally
 
-`python -m proveit tally` (or `@prove-it-intake tally`) prints counts by status and by outcome, total sandbox runs and seconds, and for each report the time to decision (elapsed time from the moment it reached triage to a maintainer's decision, from recorded timestamps; it is not a measure of effort) and the agent cost if a human recorded one with `proveit cost`, otherwise `not recorded`.
+`python -m proveit tally` (or `@prove-it-intake tally`) prints counts by status and by outcome, total sandbox runs and seconds (every container counts: a 3-run check is 3 runs, and the seconds add up all of them), and for each report the time to decision (elapsed time from the moment it reached triage to a maintainer's decision, from recorded timestamps; it is not a measure of effort) and the agent cost if a human recorded one with `proveit cost`, otherwise `not recorded`.
 
 ### The advisory pack
 
@@ -199,6 +237,18 @@ When a maintainer's `escalate` succeeds, Intake writes `work/R-NNN/advisory/` an
 Every file is marked "DRAFT, needs maintainer review". None contains reporter prose or the payload: the payload is named by its SHA-256, size and known tags. A CVE alias appears only if the maintainer's escalate note contains one. The export includes the pack in its manifest.
 
 A timestamped trail like this can help a manufacturer meet the EU Cyber Resilience Act's reporting duties. From 11 September 2026, a manufacturer must send "an early warning notification of an actively exploited vulnerability, without undue delay and in any event within 24 hours of the manufacturer becoming aware of it" ([Regulation (EU) 2024/2847, Art. 14(2)(a); Art. 71 sets the date](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32024R2847); summarised by [ECIJA](https://www.ecija.com/en/news-and-insights/cyber-resilience-act-obligations-to-report-vulnerabilities-and-incidents-from-september-2026/)). Prove It does not send anything to ENISA or a CSIRT, and a draft is not a notification. This is not legal advice.
+
+### The proof record per reporter
+
+Intake keeps a record of outcomes per reporter in its private folder (`reporters.json`), keyed by an HMAC of the reporter's Switch participant id. If a message carries no id, the key is an HMAC of the display name, and the record says which field was used. It stores counts and timestamps, never names, text, payloads or titles. Verified offline, not yet live.
+
+- **Counts as a failed proof:** a ticket closed as `NOT_REPRODUCED` or `NOT_RELIABLY_REPRODUCED`, or a proof Intake rejected. At most one per ticket.
+- **Counts as good:** an escalated ticket.
+- **Does not count:** open tickets, tickets waiting for a proof, quarantined reports, information-leak claims, and tickets closed for any other reason (reproduced, never checked, inconclusive).
+- **The only consequence:** after 2 failed proofs (`INVALID_THRESHOLD`), a reporter who already has an open report cannot open another; the new report's text is not stored. A maintainer lifts it with `clear-reporter`. Nobody is banned, and no text analysis or AI detection is involved.
+- With neither an id nor a name (for example `proveit submit`), nothing is recorded.
+
+The record belongs to Intake, not to a room: every room pair one Intake serves shares it. Only one room pair (`#proveit-intake`, `#proveit-triage`) exists today, so sharing across rooms is not shown.
 
 ## Verification status
 
@@ -214,6 +264,12 @@ A timestamped trail like this can help a manufacturer meet the EU Cyber Resilien
 | Reproducer (Claude Code) and Skeptic (Codex) working in a live room | Verified live (Windows 11, Console 0.40.1) | All four replays, every demo step: check, patched check, Skeptic review, refused escalation, override, escalate, close, quarantine, tally. [Room log](docs/evidence/live-console-2026-11-06-windows.log), [R-001 evidence](docs/evidence/live-2026-11-06-windows-R-001/) |
 | Agent lockdown files applied by Claude Code and Codex | Partly verified | Both folders trusted; in the live run the agents ran only their allowed `proveit` commands. Not yet tried: asking an agent to read `~/.proveit` or run a forbidden command. Codex's read-only profile is tested on macOS and Linux; on Windows those tests skip |
 | Switch Trust blocking fixture 04 | Verified live (Windows 11, Console 0.40.1, 2026-11-06) | Regex-only policy: 04 blocked before the room (no ticket, Intake saw nothing); 01, 02 + proof and 03 became tickets with payload SHA-256s matching the files; every agent reply and maintainer command passed unchanged. With Jailbreak also on, report 02's proof was blocked too. [Trust log](docs/evidence/live-trust-2026-11-06-windows.log) |
+| Clean-state repeats: 3 sequential runs per check, `NOT_RELIABLY_REPRODUCED` blocks escalation, Docker start failure records nothing | Verified offline, not yet live | `tests/test_repeats.py`, `tests/test_sandbox.py` (`Repeats`) |
+| Reason-coded disputes, contradicting codes refused, one fixed reporter question on close | Verified offline, not yet live | `tests/test_reasons.py` |
+| Scope policy enforced at Intake | Verified offline, not yet live | `tests/test_scope.py` |
+| Four-field proof request, `affected_version` required, `expected`/`actual` never reach agents | Verified offline, not yet live | `tests/test_report_fields.py`, `tests/test_sandbox.py` (`Canary`) |
+| DRAFT advisory pack on escalate (OSV, GHSA, timeline) | Verified offline, not yet live | `tests/test_advisory.py`; the OSV schema test needs the optional `jsonschema` and skips without it |
+| Proof record per reporter and the one-open-report limit | Verified offline, not yet live | `tests/test_reputation.py`, rehearsal step 6 |
 | Trust red-team eval score | **Not yet run** | |
 | Agent cost per report | **Not recorded** | `proveit cost` once a human reads Switch ROI or a provider dashboard |
 
@@ -233,6 +289,11 @@ A timestamped trail like this can help a manufacturer meet the EU Cyber Resilien
 - Information-leak claims are never decided automatically.
 - Switch Trust's second pattern (`print (your )?env(ironment)?`) blocks an information-leak report phrased like "makes the app print environment variables". The reporter gets the block notice and can reword it; nothing is dropped silently.
 - Agent permission rules guard the commands the agents write; they are not a boundary around every program. The boundaries are the sandbox and the evidence-only design.
+- Everything added on 2026-11-07 (repeats, reason codes, scope policy, four-field request, advisory pack, proof record) is verified offline, not yet live. The live Skeptic must get the new instructions first: its free-text disputes are refused now.
+
+## Future work
+
+- A second library, with its own scope policy and room pair; none exists yet.
 
 ## Repository map
 
@@ -243,7 +304,10 @@ proveit/poc.py            data-only proof rules: entry points, payload checks, s
 proveit/reports.py        report -> ticket of fixed fields
 proveit/screen.py         prompt-injection screen (fallback layer)
 proveit/sandbox.py        docker run with every limit
-proveit/judge.py          outcome classes -> ticket states, the Skeptic's checklist
+proveit/judge.py          outcome classes -> ticket states, n/N clean runs, the Skeptic's checklist
+proveit/reasons.py        reason codes and the one fixed reporter question for each
+proveit/advisory.py       the DRAFT advisory pack written on escalate
+proveit/reputation.py     the proof record per reporter (HMAC-keyed, outcomes only)
 proveit/evidence.py       the evidence pack
 proveit/states.py         the state machine
 proveit/actions.py        every action on a ticket, and the tally
@@ -253,8 +317,10 @@ target/                   sandbox image: parent harness and child
 agents/                   per-agent working folders with permission lockdowns
 switch/                   the Switch template
 reports/replays/          the four demo reports
-scripts/                  rehearsal, private Switch server, replay driver, end-to-end test
+scripts/                  rehearsal, private Switch server, replay driver, end-to-end test, check timing
 docs/                     setup guide, demo script, blog draft, evidence
+docs/policy/              the PyYAML scope policy Intake enforces
+tests/data/               a copy of the official OSV schema (source and licence in its README)
 ```
 
 ## Team Pikachu

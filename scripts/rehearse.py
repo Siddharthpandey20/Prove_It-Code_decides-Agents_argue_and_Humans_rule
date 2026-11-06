@@ -126,8 +126,11 @@ def rehearse(work):
     outcomes = []
     for record in store.all_tickets():
         runs = {r["build"]: r.get("outcome") for r in record.get("runs", [])}
+        # n/N per build: how many of the check's clean runs agreed, out of how many containers ran.
+        clean = {r["build"]: "%s/%s" % (r.get("agreeing"), r.get("container_runs")) for r in record.get("runs", [])}
         outcomes.append({"id": record["id"], "status": record["status"], "vulnerable": runs.get("vulnerable"),
-                         "patched": runs.get("patched"), "skeptic": (record.get("skeptic") or {}).get("verdict"),
+                         "patched": runs.get("patched"), "clean_runs": clean,
+                         "skeptic": (record.get("skeptic") or {}).get("verdict"),
                          "overridden": bool(record.get("override"))})
     return outcomes
 

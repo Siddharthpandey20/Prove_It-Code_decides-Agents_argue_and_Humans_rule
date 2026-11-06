@@ -52,6 +52,9 @@ The following rules govern all hackathon work:
 - With the Jailbreak detector also on, report 02's proof was blocked too, so Jailbreak stays off (D-010).
 - The Skeptic concurred live on a fresh NOT_REPRODUCED ticket (R-002) under its corrected rules.
 
+**As of 2026-11-07, branch `feat/openssf-triage` (not merged):** OpenSSF-aligned triage. Everything on this branch is **verified offline, not yet live**.
+- U1a done: every check runs the payload 3 times, one after another, each in a new container (D-011). Runs that disagree give `NOT_RELIABLY_REPRODUCED`, which needs an override to escalate (D-012). Evidence: `tests/test_repeats.py`, `tests/test_sandbox.py` `Repeats`. Timing on this machine: a normal check takes about 1.3 to 1.4 s longer; a payload that hits the 10 s call limit goes from 10.7 to 31.9 s (`scripts/time_checks.py`).
+
 **Next action:** Merge `feat/switch-trust` into `fix/checkpoint-2026-11-05` if the team accepts it.
 - To reset: stop Intake, delete `work/` and the `private` folder (see DEMO), then run `python -m proveit.intake run` in your own terminal.
 - Record the demo video by Nov 7 (attack scene with Trust: DEMO.md), and submit by **Nov 7, 11:59 PM IST**.
@@ -67,6 +70,7 @@ The following rules govern all hackathon work:
 | Live Claude Code + Codex in Switch Console | Done 2026-11-06 | Unassigned (run on the Windows demo machine) | Windows 11, Console 0.40.1, Claude Code 2.1.318, Codex 0.166.0; every demo step ran live. [Room log](docs/evidence/live-console-2026-11-06-windows.log). |
 | Agent permissions on the demo machine | Partly verified | Unassigned | Done: Bypass permissions off for both, checkout trusted by Claude Code and Codex, agents ran only `proveit` commands. Not done: asking an agent to read `~/.proveit` or run a forbidden command (CHECKPOINT J5). Codex's sandbox profile tests skip on Windows. |
 | Switch Trust guardrail and replay 04 | Done 2026-11-06 | Unassigned (run on the Windows demo machine) | Regex-only policy (SETUP §5): 04 blocked before the room; every legitimate message unchanged. [Trust log](docs/evidence/live-trust-2026-11-06-windows.log). Intake's quarantine remains the second wall. Trust's red-team eval (CHECKPOINT M2) not run. |
+| OpenSSF triage practices (branch `feat/openssf-triage`) | In progress; verified offline, not yet live | Unassigned | Items U1a to U5 in [CHECKPOINT O](docs/CHECKPOINT.md#o-openssf-triage-practices-branch-featopenssf-triage). A live run in the room is still needed for each. |
 | Public repo and accurate README | Repo exists; final review pending | Unassigned | Confirm public access and update verification claims after the live run. |
 | Short demo video | Deferred from immediate priorities; required for submission | Unassigned | Record the running workflow and include its link in the submission by **Nov 7, 11:59 PM IST**. |
 | Submit Track 01 entry | Pending | Unassigned | Submit the public repo, README, and video by **Nov 7, 11:59 PM IST**; record confirmation. |
@@ -84,6 +88,8 @@ These records are authoritative. Keep their IDs and reasons when updating them; 
 - **D-005 — Keep final report decisions with maintainers.** Reason: agents should test and challenge evidence while a person decides whether to escalate or close. Source: `9370c8e`, [README: Ticket states](README.md#ticket-states).
 - **D-006 — Use one root context file plus a short agent entry point during the hackathon.** Reason: people and agents need the same current status and selective history, with one obvious place to update it. Source: team answers on 2026-11-05.
 - **D-010 — Switch Trust policy: Regex patterns only, Block, User role; no Jailbreak, Secrets, PII or Redact.** Reason: in the live test Jailbreak also blocked report 02's proof, because a proof describes an attack. Redaction would change a payload and its SHA-256. Agents never see reporter text, so the other detectors add nothing. (D-007 to D-009 are recorded in docs/CHECKPOINT.md.) Source: [Trust log](docs/evidence/live-trust-2026-11-06-windows.log), 2026-11-06.
+- **D-011 — Every check runs the payload 3 times, one after another, each in a new container (`CHECK_RUNS` in `proveit/config.py`).** Reason: a single run can be an artefact of the run itself ("Reproduce N times from clean state", proposed in OpenSSF issue #178). The runs are sequential because parallel runs compete for memory and CPU, which would make resource-exhaustion results unreliable. On the demo machine, 3 runs add about 1.3 to 1.4 s to a normal check (under the 15 s limit set for this change); the worst case, a payload that hits the 10 s call limit, takes about 32 s instead of 11 s. The setting is not an environment variable, so an agent cannot lower it. If Docker cannot start a run, the whole check is abandoned and nothing is recorded. Source: `scripts/time_checks.py`, 2026-11-07.
+- **D-012 — If a check's runs disagree, it records `NOT_RELIABLY_REPRODUCED`, and escalation needs a maintainer's override.** Reason: a result that happens only sometimes is not proof, but it is not a clean negative either. A Skeptic's concur is not enough; a person must decide. One override lifts every block on the ticket (a dispute and the disagreeing runs), and the override records what it lifted. Source: `tests/test_repeats.py`, 2026-11-07.
 
 ## Important history and trials
 

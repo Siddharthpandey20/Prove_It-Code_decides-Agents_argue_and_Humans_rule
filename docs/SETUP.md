@@ -16,6 +16,10 @@ python scripts/rehearse.py                 # the whole demo offline, no Switch
 
 `build` creates `proveit-target:vulnerable` (PyYAML 5.3.1) and `proveit-target:patched` (PyYAML 5.4). It needs network once; the sandbox never has network. Images rebuild automatically when the harness changes.
 
+**Settings** (edit `proveit/config.py`; they are not environment variables, so an agent's shell cannot change them):
+
+- `CHECK_RUNS = 3`: how many times one `check` runs the payload, one after another, each in a new container with the same limits. All runs must agree; if they differ, the check records `NOT_RELIABLY_REPRODUCED`, which a maintainer must override before escalating. On the demo machine, 3 runs add about 1.4 s to a normal check; a payload that hits the 10 s call limit takes about 32 s (`python scripts/time_checks.py` measures it on yours). Verified offline, not yet live.
+
 ## 2. Start a Switch server
 
 In Switch Console: **Add a server → Run a server on this computer → Start**, and wait until the sidebar shows **Running locally**. Then **Home → Messaging apps → Mattermost → Sign-in details… → Open in Mattermost** and sign in.

@@ -537,9 +537,7 @@ class Intake:
 
     def do_override(self, record, who, note, thread):
         record = actions.override(record["id"], "human", who, note)
-        what = "the dispute" if record["override"]["after"] == "dispute" else "the missing Skeptic review"
-        self.triage.post("%s: %s overrode %s (recorded); the ticket is %s and can be escalated or closed." % (
-            record["id"], who, what, record["status"].replace("_", " ")), thread)
+        self.triage.post(actions.override_text(record), thread)
 
     def do_escalate(self, record, who, note, thread):
         record = actions.decide(record["id"], "escalate", "human", who, note)

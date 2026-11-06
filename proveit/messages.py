@@ -67,8 +67,9 @@ def accepted(ticket_id, claim=None):
 def cost_line(record):
     runs = record.get("runs", [])
     secs = sum((r.get("seconds") or 0) for r in runs)
+    count = sum(r.get("container_runs", 1) for r in runs)  # every container a check started
     times = record.get("times", {})
-    parts = ["%d sandbox run%s (%.2f s of sandbox time)" % (len(runs), "" if len(runs) == 1 else "s", secs)]
+    parts = ["%d sandbox run%s (%.2f s of sandbox time)" % (count, "" if count == 1 else "s", secs)]
     if times.get("triaged") and times.get("decided"):
         parts.append("%.0f s from triage to decision (elapsed time, not effort)" % (times["decided"] - times["triaged"]))
     cost = record.get("cost")
@@ -83,8 +84,8 @@ def patched_line(record, vulnerable):
         return None
     facts = judge.facts(record, vulnerable, patched)
     if facts["patched_build_checked"]:
-        return "On the patched %s %s, through the same entry point on the same payload, the outcome was %s." % (
-            TARGET["name"], PATCHED, patched.get("outcome"))
+        return "On the patched %s %s, through the same entry point on the same payload, the outcome was %s (%s)." % (
+            TARGET["name"], PATCHED, patched.get("outcome"), judge.repeats(patched))
     if facts["patched_comparable"] is False:
         return ("A run on the patched %s %s used a different entry point (%s), so it is not a comparison and "
                 "says nothing about whether %s fixed this." % (TARGET["name"], PATCHED, patched.get("entry_point"), PATCHED))
@@ -107,12 +108,16 @@ def decision(record, note=""):
                      "a maintainer read the evidence and closed it." % tid)
     elif status == "escalated":
         if outcome in judge.REPRODUCING:
-            lines.append("**%s confirmed by a maintainer.** It reproduced in the sandbox: %s on %s %s via `%s`." % (
-                tid, outcome, TARGET["name"], VULN, vulnerable.get("entry_point")))
+            lines.append("**%s confirmed by a maintainer.** It reproduced in the sandbox: %s on %s %s via `%s`, %s." % (
+                tid, outcome, TARGET["name"], VULN, vulnerable.get("entry_point"), judge.repeats(vulnerable)))
         elif outcome == judge.NOT_REPRODUCED:
             lines.append("**%s escalated by a maintainer for further review.** It did not reproduce in the sandbox "
-                         "(outcome %s on %s %s); the maintainer escalated it on their own judgement." % (
-                             tid, outcome, TARGET["name"], VULN))
+                         "(outcome %s on %s %s, %s); the maintainer escalated it on their own judgement." % (
+                             tid, outcome, TARGET["name"], VULN, judge.repeats(vulnerable)))
+        elif outcome == judge.NOT_RELIABLY_REPRODUCED:
+            lines.append("**%s escalated by a maintainer for further review.** It did not reproduce reliably in the "
+                         "sandbox (%s on %s %s); the maintainer escalated it on their own judgement." % (
+                             tid, judge.repeats(vulnerable), TARGET["name"], VULN))
         else:
             lines.append("**%s escalated by a maintainer for further review.** The sandbox did not reach a result "
                          "(%s on %s %s); the maintainer escalated it on their own judgement." % (
@@ -122,10 +127,13 @@ def decision(record, note=""):
         if vulnerable is None:
             lines.append("No sandbox check ran for this report.")
         elif outcome in judge.REPRODUCING:
-            lines.append("The sandbox recorded %s on %s %s." % (outcome, TARGET["name"], VULN))
+            lines.append("The sandbox recorded %s on %s %s, %s." % (outcome, TARGET["name"], VULN, judge.repeats(vulnerable)))
         elif outcome == judge.NOT_REPRODUCED:
-            lines.append("It did not reproduce in the sandbox: %s on %s %s (%s)." % (
-                outcome, TARGET["name"], VULN, vulnerable.get("why", "")))
+            lines.append("It did not reproduce in the sandbox: %s on %s %s, %s (%s)." % (
+                outcome, TARGET["name"], VULN, judge.repeats(vulnerable), vulnerable.get("why", "")))
+        elif outcome == judge.NOT_RELIABLY_REPRODUCED:
+            lines.append("It did not reproduce reliably in the sandbox: %s on %s %s." % (
+                judge.repeats(vulnerable), TARGET["name"], VULN))
         else:
             lines.append("The sandbox did not reach a result: %s on %s %s (%s)." % (
                 outcome, TARGET["name"], VULN, vulnerable.get("why", "")))

@@ -20,22 +20,34 @@ def _check_allowed(record, command, actor):
 
 
 def check(ticket_id, build="vulnerable", actor="human", by="cli", entry_point=None):
-    """Run the ticket's payload on one build. The vulnerable build sets reproduced / not_reproduced."""
+    """Run the ticket's payload on one build, config.CHECK_RUNS times in fresh containers (decision D-011).
+
+    The vulnerable build sets reproduced / not_reproduced / not_reliably_reproduced.
+    If Docker cannot start one of the runs, sandbox.SandboxError propagates and
+    nothing is recorded.
+    """
     record = store.load(ticket_id)
     command = "check" if build == "vulnerable" else "check_patched"
     _check_allowed(record, command, actor)
     entry = entry_point or record.get("entry_point")
-    run = sandbox.run_poc(entry, store.payload(ticket_id), build)  # minutes at most; not under the lock
+    run = sandbox.run_check(entry, store.payload(ticket_id), build)  # minutes at most; not under the lock
     with store.ticket_lock(ticket_id):
         return _record_check(ticket_id, build, command, actor, by, run)
+
+
+def container_runs(entry):
+    """Containers one check started. Checks recorded before repeats ran one."""
+    return entry.get("container_runs", 1)
 
 
 def _record_check(ticket_id, build, command, actor, by, run):
     path = store.save_run(ticket_id, run)
     record = store.load(ticket_id)
     record["runs"].append({"build": build, "file": path, "at": store.now(), "by": by, "actor": actor,
-                           "outcome": run.get("outcome"), "seconds": run.get("seconds"),
-                           "entry_point": run.get("entry_point")})
+                           "outcome": run.get("outcome"),
+                           "seconds": run.get("total_seconds", run.get("seconds")),
+                           "container_runs": run.get("runs", 1), "agreeing": run.get("agreeing"),
+                           "image_id": run.get("image_id"), "entry_point": run.get("entry_point")})
     if command == "check" and record["status"] != "disputed":
         target = judge.status_for(run) or record["status"]
     else:
@@ -103,22 +115,50 @@ def _override(ticket_id, actor, by, note=""):
     if record["status"] in states.CHECKED:
         target = record["status"]
     evidence_now = current_evidence(record)
+    skeptic = record.get("skeptic") or {}
+    # One override lifts every block the ticket has now: a dispute, and runs that disagreed.
+    cleared = []
+    if record["status"] == "disputed":
+        cleared.append("dispute:%s" % skeptic["code"] if skeptic.get("code") else "dispute")
+    if (target or record["status"]) == states.UNRELIABLE:
+        cleared.append(states.UNRELIABLE)
     store.apply(record, "override", actor, by, target=target or record["status"], note=clean_reason(note),
-                evidence=evidence_now)
+                evidence=evidence_now, cleared=cleared)
     record["override"] = {"by": by, "at": store.now(), "note": clean_reason(note), "evidence": evidence_now,
-                          "after": "dispute" if (record.get("skeptic") or {}).get("verdict") == "dispute" else "no current concur"}
+                          "cleared": cleared,
+                          "after": "dispute" if skeptic.get("verdict") == "dispute" else "no current concur"}
     store.save(record)
     return record
 
 
+def override_text(record):
+    """The triage message after an override, naming every block it lifted."""
+    override_ = record["override"]
+    parts = []
+    for item in override_.get("cleared") or []:
+        if item.startswith("dispute"):
+            code = item.partition(":")[2]
+            parts.append("the dispute (%s)" % code if code else "the dispute")
+        elif item == states.UNRELIABLE:
+            run = latest_run(record, "vulnerable") or {}
+            parts.append("the runs-disagree block (%s)" % judge.repeats(run))
+    what = " and ".join(parts) if parts else "the missing Skeptic review"
+    return "%s: %s overrode %s; it can now be escalated or closed." % (record["id"], override_["by"], what)
+
+
 def review_problem(record):
-    """Why `record` may not be escalated yet (decision D-007), or None.
+    """Why `record` may not be escalated yet (decisions D-007, D-012), or None.
 
     Escalation needs the Skeptic's concur on the evidence the ticket has now,
-    or a maintainer's override made on that evidence.
+    or a maintainer's override made on that evidence. When the check's clean
+    runs disagreed, only an override will do.
     """
     if is_current(record.get("override"), record):
         return None
+    if record["status"] == states.UNRELIABLE:
+        run = latest_run(record, "vulnerable") or {}
+        return ("its clean runs disagreed (%s); a maintainer must override first (a concur is not enough)"
+                % judge.repeats(run))
     skeptic = record.get("skeptic")
     if skeptic and skeptic.get("verdict") == "concur" and is_current(skeptic, record):
         return None
@@ -183,8 +223,8 @@ def tally():
         vuln = [x for x in r.get("runs", []) if x["build"] == "vulnerable"]
         outcome = vuln[-1]["outcome"] if vuln else "not run"
         by_outcome[outcome] = by_outcome.get(outcome, 0) + 1
-        runs += len(r.get("runs", []))
-        seconds += sum((x.get("seconds") or 0) for x in r.get("runs", []))
+        runs += sum(container_runs(x) for x in r.get("runs", []))  # every container: a 3-run check counts 3
+        seconds += sum((x.get("seconds") or 0) for x in r.get("runs", []))  # each check's entry holds all its runs
         ms = decision_seconds(r)
         cost = r.get("cost")
         per_report.append({"id": r["id"], "status": r["status"], "outcome": outcome,

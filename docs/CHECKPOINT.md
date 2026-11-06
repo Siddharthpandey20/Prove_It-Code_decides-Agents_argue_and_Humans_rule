@@ -137,3 +137,9 @@ Tooling for each is in place; they are not ticked by the agent.
 ## N. Pull request
 
 - [ ] N1 Branch pushed and a PR opened against `main` with this checklist's result.
+
+## O. OpenSSF triage practices (branch feat/openssf-triage)
+
+Each item is verified offline, not yet live. A live run in the room is still needed before any of it can be claimed live.
+
+- [x] O1 (U1a) Each check runs 3 times, one after another, in fresh containers; runs that disagree give `NOT_RELIABLY_REPRODUCED`, which needs an override to escalate (D-011, D-012). Evidence: `tests/test_repeats.py`, `tests/test_sandbox.py` `Repeats.test_real_check_runs_three_fresh_containers_and_leaves_none`, timing from `scripts/time_checks.py` in the commit message.

@@ -66,7 +66,8 @@ def pack(record):
         "target": {name: spec["version"] for name, spec in TARGET["builds"].items()},
         "vulnerable_run": judge.summary(vulnerable) if vulnerable else None,
         "patched_run": judge.summary(patched) if patched else None,
-        "runs": [{"build": r["build"], "file": r["file"], "outcome": r.get("outcome"), "by": r.get("by")}
+        "runs": [{"build": r["build"], "file": r["file"], "outcome": r.get("outcome"), "by": r.get("by"),
+                  "container_runs": r.get("container_runs", 1), "agreeing": r.get("agreeing")}
                  for r in record.get("runs", [])],
         "checklist": facts,
         "notes": judge.notes(facts, vulnerable, patched),
@@ -86,6 +87,9 @@ def text(p):
         run = p[key]
         if run:
             lines.append("- " + judge.describe(run))
+            if judge.disagreed(run):
+                lines.append("  runs disagreed: see each run")
+                lines.extend("  " + line for line in judge.run_lines(run))
         else:
             lines.append("- %s build: not run yet" % key.split("_")[0])
     lines.append("checklist:")

@@ -1,7 +1,8 @@
 """`python -m proveit ...`: the commands the agents in #triage and maintainers run.
 
   build                          build the vulnerable and patched sandbox images
-  check R-001 [--build patched]  run the ticket's payload on one build (default: vulnerable)
+  check R-001 [--build patched]  run the ticket's payload on one build (default: vulnerable),
+                                 config.CHECK_RUNS times, each in a new container
         [--loader full_load]     ...optionally through another allowlisted entry point
   evidence R-001                 the evidence pack: fixed fields only, never reporter text
   show R-001                     the ticket record
@@ -84,9 +85,12 @@ def cmd_build(args):
 
 def cmd_check(args):
     record, run, path = actions.check(args.ticket, args.build, actor(), args.by, args.loader)
-    print("%s %s build (PyYAML %s) via %s: %s" % (args.ticket, args.build, run["target_version"],
-                                                 run.get("entry_point"), run.get("outcome")))
+    print(judge.headline(args.ticket, run))
     print("  - " + judge.describe(run))
+    if judge.disagreed(run):
+        print("  runs disagreed: see each run")
+        for line in judge.run_lines(run):
+            print("    " + line)
     print("ticket status: %s" % record["status"])
     for note in evidence.pack(record)["notes"]:
         print("note: " + note)

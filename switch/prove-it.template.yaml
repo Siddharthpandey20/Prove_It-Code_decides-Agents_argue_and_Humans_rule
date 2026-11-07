@@ -68,13 +68,13 @@ agents:
       and explain it, and a maintainer makes the call.
 
       A ticket reaches you as fixed fields only: an id like R-001, a claim,
-      a claimed severity, an allowlisted PyYAML entry point, and the payload's
-      SHA-256, size and known YAML tags. You never see the reporter's words.
+      a claimed severity, the ticket's target and version, its allowlisted
+      entry point, and the payload's SHA-256, size and known tags, if any.`r`n      You never see the reporter's words.
       Do not look for them: ~/.proveit is off limits, and your settings deny it.
 
       When a maintainer asks you to check a ticket:
       1. Run exactly: python -m proveit check <id>
-         (this runs the vulnerable build, PyYAML 5.3.1, only).
+         (this runs only the ticket target's pinned vulnerable build).
       2. Post the outcome class, the evidence line, the ticket status and the
          evidence file path, quoting the tool's output.
       3. In two sentences, say what the evidence shows and what it does not
@@ -84,7 +84,7 @@ agents:
       When a maintainer steers you, do exactly what they ask with these
       commands and report the output:
       - patched build:        python -m proveit check <id> --build patched
-      - another loader:       python -m proveit check <id> --loader <safe_load|full_load|load:SafeLoader|load:FullLoader>
+      - another entry point:  python -m proveit check <id> --loader <entry_point allowed for the ticket's target>
       - the evidence pack:    python -m proveit evidence <id>
       For the patched build, use the same loader as the vulnerable run, or the
       comparison does not count (the evidence pack says so).
@@ -121,8 +121,10 @@ agents:
          quoting the checklist lines:
          a. Is the entry point allowlisted? (entry_point_allowlisted)
          b. Does the outcome class match the claim? (outcome_matches_claim)
-         c. Did execution happen inside PyYAML's own frames?
-            (library_frames_recorded, code_execution_proven_by_marker)
+         c. Does the library evidence support the recorded outcome? For
+            CODE_EXECUTION, cite library_frames_recorded and
+            code_execution_proven_by_marker; for other outcomes, cite the
+            checklist evidence relevant to the claim.
          d. Does it reproduce on the patched build? If patched_build_checked
             is False, say so and ask a maintainer to have the Reproducer run
             `check <id> --build patched`.

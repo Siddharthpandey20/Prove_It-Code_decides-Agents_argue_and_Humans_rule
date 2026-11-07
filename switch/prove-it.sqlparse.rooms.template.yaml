@@ -4,9 +4,8 @@
 # only after prove-it-reproducer and prove-it-skeptic already exist (created by
 # switch/prove-it.template.yaml). VERIFIED OFFLINE, NOT YET DEPLOYED.
 #
-# The same two agents join #sqlparse-triage. Their Console instructions were
-# written for PyYAML; before a live sqlparse run, give the Skeptic this room's
-# scope-policy doc (below) -- it does not know sqlparse yet.
+# The same two agents join #sqlparse-triage. Their standing instructions are
+# target-neutral; this room supplies the sqlparse verdict rules and scope policy.
 version: 1
 
 params:

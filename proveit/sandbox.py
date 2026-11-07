@@ -92,23 +92,23 @@ def build(build_name=None, force=False, quiet=True, target=None):
             continue
         cmd = ["docker", "build", "--build-arg", "%s=%s" % (target.build_arg, spec["version"]),
                "--label", "proveit.harness=%s" % harness_digest(target), "-t", spec["image"], str(target.target_dir)]
-        # Docker's output is always captured, so a failure can show its end; when not quiet it is also echoed.
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                                encoding="utf-8", errors="replace")
-        tail = []
-        out_encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
-        try:
-            for line in proc.stdout:
-                tail = (tail + [line])[-60:]
-                if not quiet:
-                    # A Windows console (cp1252) cannot print every character Docker emits.
-                    print(line.encode(out_encoding, "replace").decode(out_encoding), end="")
-            proc.wait(timeout=BUILD_TIMEOUT)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            raise SandboxError("building %s took longer than %d s" % (spec["image"], BUILD_TIMEOUT)) from None
-        finally:
-            proc.stdout.close()
+        # A disk-backed log avoids a blocking stdout iterator and bounds the wait
+        # even when Docker goes silent or leaves an inherited output pipe open.
+        with tempfile.TemporaryFile(mode="w+b") as output:
+            proc = subprocess.Popen(cmd, stdout=output, stderr=subprocess.STDOUT)
+            try:
+                proc.wait(timeout=BUILD_TIMEOUT)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=PROBE_TIMEOUT)
+                raise SandboxError("building %s took longer than %d s" % (spec["image"], BUILD_TIMEOUT)) from None
+            output.seek(0)
+            lines = output.read().decode("utf-8", "replace").splitlines(keepends=True)
+        tail = lines[-60:]
+        if not quiet:
+            out_encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+            for line in lines:
+                print(line.encode(out_encoding, "replace").decode(out_encoding), end="")
         if proc.returncode != 0:
             hint = ""
             if any("do not match the hashes" in line or "THESE PACKAGES DO NOT MATCH" in line for line in tail):

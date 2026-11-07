@@ -2,7 +2,7 @@
 
 **AI spam is drowning open source. Prove It makes the AI prove its bug report before a human reads it.**
 
-**Code decides, agents argue, humans rule.** The verdict comes from deterministic sandbox evidence, never from a language model's opinion. The agents run the investigation, challenge the evidence and explain it in the room. A maintainer makes every final call.
+**Code decides, agents argue, humans rule.** The verdict comes from rule-based classification of observed sandbox results, never from a language model's opinion. The agents run the investigation, challenge the evidence and explain it in the room. A maintainer makes every final call.
 
 **We don't detect AI. We require proof.**
 
@@ -44,7 +44,7 @@ flowchart LR
 3. **Intake posts a ticket** to the room its intake room links to as `triage`: claim, claimed severity, entry point, payload SHA-256, size and known YAML tags. No title, no reporter name, no reporter prose.
 4. **A maintainer asks the Reproducer** (Claude Code) to check it. `python -m proveit check R-001` runs the vulnerable build only, 3 times in fresh containers, and sets the ticket to `reproduced`, `not_reproduced`, or `not_reliably_reproduced` when the runs disagree.
 5. **The Skeptic** (Codex) reads `python -m proveit evidence R-001`, works through a checklist, and ends with `concur` or `dispute <reason_code>`. A dispute blocks escalation until a maintainer overrides it.
-6. **The maintainer steers and decides:** asks for the patched build (`check R-001 --build patched`) or another loader, then tells Intake `escalate`, `close` or `override`. Intake tells the reporter, in their thread, exactly what the evidence showed, and on a close asks one fixed question. An escalate also writes a DRAFT advisory pack.
+6. **The maintainer steers and decides:** asks for the patched build (`check R-001 --build patched`) or another loader, then tells Intake `escalate`, `close` or `override`. Intake tells the reporter, in their thread, exactly what the evidence showed, and on a close asks at most one fixed question (some closes need none). An escalate also writes a DRAFT advisory pack.
 
 ## Proofs are data, so the result can't be faked
 
@@ -58,14 +58,15 @@ An audit of the first version showed a PoC that is Python code can fake its own 
 | --- | --- |
 | `CODE_EXECUTION` | The marker file appeared. Nothing but the library runs in the child, so only the library running the payload as code can create it |
 | `CRASH` | The library call died on a native fault (SIGSEGV, SIGBUS, SIGABRT, SIGFPE, SIGILL) |
-| `RESOURCE_EXHAUSTION` | The call ran past 10 s or 192 MB. Lower severity, never code execution |
+| `RESOURCE_EXHAUSTION` | A busy CPU timeout, a resource-limit signal, or a reported MemoryError corroborated by high observed memory usage. Lower severity, never code execution |
+| `INCONCLUSIVE` | The sandbox could not establish a result, including an idle timeout; this proves neither reproduction nor absence |
 | `NOT_REPRODUCED` | The call returned or raised normally |
 | `INVALID_PROOF` | Not run: Python code, an unsafe or unknown entry point, or a payload that is too large or not UTF-8 |
 | `NOT_RELIABLY_REPRODUCED` | A check's clean runs disagreed (for example `CODE_EXECUTION 2/3, NOT_REPRODUCED 1/3`). Not an outcome of one run: escalating it needs a maintainer's override |
 
 Every check runs the payload 3 times (`CHECK_RUNS` in `proveit/config.py`), one after another, each in a new container with the same limits; the evidence says "3/3 clean runs" and names the Docker image ID. If Docker cannot start a run, the check records nothing. Verified offline, not yet live.
 
-The child's own report (exception type, PyYAML call stacks) is untrusted: the parent keeps only values on allowlists built from PyYAML's own source, and the outcome never depends on it. A result that reproduces on both builds is flagged "possible new issue, human review required" and is never escalated automatically.
+The child's own report (exception type, PyYAML call stacks) is untrusted: the parent keeps only values on allowlists built from PyYAML's own source, and crash/code-execution classifications use parent observations. Memory-exhaustion classification also uses the reported `MemoryError`, corroborated by observed peak memory. A result that reproduces on both builds is flagged "possible new issue, human review required" and is never escalated automatically.
 
 ### What the replays give (from `python scripts/rehearse.py`)
 
@@ -155,16 +156,16 @@ A report is attacker-controlled text that ends up near agents that can run comma
 
 The sandbox image is `python:3.9-slim`, pinned by digest. Python 3.9 is end of life; that is acceptable here because the image exists only to hold an intentionally old library (PyYAML 5.3.1, from 2020) inside an isolated, no-network container.
 
-### Offline: tests and the rehearsal (about 3 minutes, no Switch needed)
+### Offline: tests and the rehearsal (no Switch needed)
 
 ```sh
 git clone https://github.com/akhilll0305/team-pikachu-switch-ai && cd team-pikachu-switch-ai
 python -m proveit build                      # builds proveit-target:vulnerable and :patched (needs network once)
-python -m unittest discover -s tests -v      # 285 tests, about two minutes; Docker must be running
+python -m unittest discover -s tests -v      # 306 tests; duration varies by host; Docker must be running
 python scripts/rehearse.py --twice           # replays all four PyYAML reports twice and compares
 ```
 
-Expected on Windows 11 (2026-11-07): `Ran 285 tests ... OK (skipped=12)` when the sqlparse images are built (`python -m proveit build --target sqlparse`), or `skipped=14` without them — the two sqlparse reproduce/not-reproduce tests skip when their images are absent and never build one. 11 of the base skips need macOS or Linux (the harness's own classification tests, POSIX file permissions, Codex's sandbox profile) and say so; the 12th is the OSV schema test, which needs the optional `jsonschema` package. If Docker is not running, the sandbox tests are skipped as well and the skip count goes up; that is not a pass. The tests in `tests/test_agent_rules.py` check the Skeptic's Codex rules and skip when the Codex CLI is not installed (as on CI); that skip is expected. The rehearsal ends with:
+Expected on Windows 11 (2026-11-07): `Ran 306 tests ... OK (skipped=12)` when the sqlparse images are built (`python -m proveit build --target sqlparse`), or `skipped=14` without them — the two sqlparse reproduce/not-reproduce tests skip when their images are absent and never build one. 11 of the base skips need macOS or Linux (the harness's own classification tests, POSIX file permissions, Codex's sandbox profile) and say so; the 12th is the OSV schema test, which needs the optional `jsonschema` package. If Docker is not running, the sandbox tests are skipped as well and the skip count goes up; that is not a pass. The tests in `tests/test_agent_rules.py` check the Skeptic's Codex rules and skip when the Codex CLI is not installed (as on CI); that skip is expected. The optional schema check also passed separately in an isolated environment with jsonschema 4.26.0. The recorded fix-pass results are in [the verification log](docs/evidence/fix-pass-2026-11-07-windows.log). A shallow clone can additionally skip the Git baseline comparison if `c78f1ff` is unavailable; the pinned hash guard still runs. The rehearsal ends with:
 
 ```
 **Tally:** 4 reports. By status: 2 closed, 1 escalated, 1 quarantined. By outcome: 1 CODE_EXECUTION, 2 NOT_REPRODUCED, 1 not run. ...
@@ -210,8 +211,8 @@ The manual GUI steps are: start the server in Console, sign in Claude Code and C
 | `python -m proveit cost R-001 --usd 0.12 --source "Switch ROI"` | maintainer only | Record agent cost from a real source; never estimated |
 | `python -m proveit list` / `show R-001` / `tally` | anyone | Tickets, one ticket record, totals |
 | `@prove-it-intake escalate R-001 [note]` | maintainer in the room | Decide; Intake tells the reporter and writes the DRAFT advisory pack |
-| `@prove-it-intake close R-001 [reason=<code>] <note>` | maintainer in the room | Close; the reporter gets one fixed question (the code's, else the standing dispute's, else the evidence's) |
-| `@prove-it-intake concur R-001` / `dispute R-001 <reason_code> [note]` | Skeptic (or a maintainer) in the room | Record a verdict. Codes: `not_reproduced`, `not_clean_reproducible`, `also_on_patched`, `out_of_scope_api`, `outcome_mismatch`, `severity_overclaimed`, `version_missing`, `patched_not_checked`. The note stays in triage |
+| `@prove-it-intake close R-001 [reason=<code>] <note>` | maintainer in the room | Close; the reporter gets at most one fixed question (the code's, else the standing dispute's, else the evidence's) |
+| `@prove-it-intake concur R-001 review=<token>` / `dispute R-001 <reason_code> review=<token> [note]` | Skeptic (or a maintainer) in the room | Record a verdict; agents must copy the review token from their evidence pack. Codes: `not_reproduced`, `not_clean_reproducible`, `also_on_patched`, `out_of_scope_api`, `outcome_mismatch`, `severity_overclaimed`, `version_missing`, `patched_not_checked`. The note stays in triage |
 | `python -m proveit clear-reporter <key>` / `@prove-it-intake clear-reporter <key>` | maintainer only | Lift a reporter's one-open-report limit |
 | `@prove-it-intake override R-001` / `release R-001` | maintainer in the room | Clear a dispute / send a quarantined report on |
 | `@prove-it-intake evidence R-001` / `status` / `tally` | anyone in triage | Post the evidence pack, the ticket list, the totals |
@@ -260,8 +261,8 @@ The record belongs to Intake, not to a room: every room pair one Intake serves s
 | State machine, honest messages, tally | Verified offline | `tests/test_states.py`, `tests/test_intake.py` |
 | All four replays, twice, identical | Verified offline | `python scripts/rehearse.py --twice`, CI |
 | Intake over a real Switch 0.31.0 server and Mattermost (protocol, rooms, link, threads, decisions, refusals) | Verified headless | [docs/evidence/e2e-2026-11-05.log](docs/evidence/e2e-2026-11-05.log) |
-| Template | Checked against the server, deployed from Console | Accepted by Switch 0.31.0's `save_template` with no warnings, and valid against the JSON schema from its `get_template_guide`. Deployed from Switch Console 0.40.1 on 2026-11-06 (agents first, then the rooms with [the rooms-only copy](switch/prove-it.rooms.template.yaml) after a Mattermost outage; see SETUP troubleshooting) |
-| Reproducer (Claude Code) and Skeptic (Codex) working in a live room | Verified live (Windows 11, Console 0.40.1) | All four replays, every demo step: check, patched check, Skeptic review, refused escalation, override, escalate, close, quarantine, tally. [Room log](docs/evidence/live-console-2026-11-06-windows.log), [R-001 evidence](docs/evidence/live-2026-11-06-windows-R-001/) |
+| Original template at the historical live revision | Checked against the server, deployed from Console; current edited templates need revalidation | Accepted by Switch 0.31.0's `save_template` with no warnings, and valid against the JSON schema from its `get_template_guide`. Deployed from Switch Console 0.40.1 on 2026-11-06 (agents first, then the rooms with [the rooms-only copy](switch/prove-it.rooms.template.yaml) after a Mattermost outage; see SETUP troubleshooting) |
+| Original workflow with Reproducer (Claude Code) and Skeptic (Codex) in a live room | Verified live at the historical revision only (Windows 11, Console 0.40.1); new branch features and review tokens are not yet live | All four replays, every demo step: check, patched check, Skeptic review, refused escalation, override, escalate, close, quarantine, tally. [Room log](docs/evidence/live-console-2026-11-06-windows.log), [R-001 evidence](docs/evidence/live-2026-11-06-windows-R-001/) |
 | Agent lockdown files applied by Claude Code and Codex | Partly verified | Both folders trusted; in the live run the agents ran only their allowed `proveit` commands. Not yet tried: asking an agent to read `~/.proveit` or run a forbidden command. Codex's read-only profile is tested on macOS and Linux; on Windows those tests skip |
 | Switch Trust blocking fixture 04 | Verified live (Windows 11, Console 0.40.1, 2026-11-06) | Regex-only policy: 04 blocked before the room (no ticket, Intake saw nothing); 01, 02 + proof and 03 became tickets with payload SHA-256s matching the files; every agent reply and maintainer command passed unchanged. With Jailbreak also on, report 02's proof was blocked too. [Trust log](docs/evidence/live-trust-2026-11-06-windows.log) |
 | Clean-state repeats: 3 sequential runs per check, `NOT_RELIABLY_REPRODUCED` blocks escalation, Docker start failure records nothing | Verified offline, not yet live | `tests/test_repeats.py`, `tests/test_sandbox.py` (`Repeats`) |
@@ -270,7 +271,7 @@ The record belongs to Intake, not to a room: every room pair one Intake serves s
 | Four-field proof request, `affected_version` required, `expected`/`actual` never reach agents | Verified offline, not yet live | `tests/test_report_fields.py`, `tests/test_sandbox.py` (`Canary`) |
 | DRAFT advisory pack on escalate (OSV, GHSA, timeline) | Verified offline, not yet live | `tests/test_advisory.py`; the OSV schema test needs the optional `jsonschema` and skips without it |
 | Proof record per reporter and the one-open-report limit | Verified offline, not yet live | `tests/test_reputation.py`, rehearsal step 6 |
-| Second target behind one adapter; PyYAML unchanged (same tests, same rehearsal digest, `target/` byte-identical) | Verified offline, not yet live | `tests/test_targets.py`, `tests/test_second_target.py` |
+| Second target behind one adapter; PyYAML sandbox and rehearsal outcomes preserved (`target/` byte-identical); agent verdicts now require review tokens | Verified offline, not yet live | `tests/test_targets.py`, `tests/test_second_target.py` |
 | sqlparse CVE-2023-30608 reproduces on 0.4.3, not on 0.4.4 (same sandbox and limits) | Verified offline, not yet live | `tests/test_second_target.py` (Docker), `python scripts/rehearse.py --second-target --twice` |
 | One Intake, two rooms: target from the room not the text; global ids; shared reporter record; cross-room decisions | Verified offline, not yet live | `tests/test_rooms.py` |
 | sqlparse room pair deployed from its own template | **Not yet deployed** | `switch/prove-it.sqlparse.rooms.template.yaml` (separate file; the live Skeptic's Console instructions do not know sqlparse yet) |
@@ -295,9 +296,19 @@ The record belongs to Intake, not to a room: every room pair one Intake serves s
 - Agent permission rules guard the commands the agents write; they are not a boundary around every program. The boundaries are the sandbox and the evidence-only design.
 - Everything added on 2026-11-07 (repeats, reason codes, scope policy, four-field request, advisory pack, proof record) is verified offline, not yet live. The live Skeptic must get the new instructions first: its free-text disputes are refused now.
 
+### Delivery and review limits
+
+Intake saves report-delivery receipts and decision notification status. It retries unfinished work after a restart and periodically while connected. Posts are at least once: if Switch accepts a post but its response is lost before a receipt is saved, a retry can duplicate that post. Switch provides no message idempotency key here; this is not an exactly-once guarantee.
+
+Agent verdicts carry `review=<token>` copied from the evidence pack they read. Changed evidence invalidates the token. Updating the live Skeptic instructions and validating/deploying the edited templates are still required before demonstrating this branch.
+
+Three matching runs show repeatability for those inputs, builds and limits, not universal correctness. A patched comparison says only whether that payload reproduced on that pinned build. Agent cost and time saved remain unmeasured unless recorded separately; time to decision is elapsed time, not effort.
+
+The default build prepares PyYAML. To exercise sqlparse, explicitly run `python -m proveit build --target sqlparse` and `python scripts/rehearse.py --second-target --twice`. CI builds both targets, requires the sqlparse Docker checks, validates OSV drafts with jsonschema and runs both rehearsals; the edited CI configuration still needs a hosted run.
+
 ## A second target (verified offline, not yet live)
 
-The same Intake, Reproducer and Skeptic can serve more than one library. A second target, **sqlparse**, is built and verified offline to show it:
+The same Intake, Reproducer and Skeptic are designed to serve more than one library; this routing has been tested offline. A second target, **sqlparse**, is built and verified offline to show it:
 
 - **The proof.** sqlparse 0.4.3 has a ReDoS in its string-literal regex ([CVE-2023-30608](https://github.com/andialbrecht/sqlparse/security/advisories/GHSA-rrm6-wvj7-cwh2), fixed in 0.4.4). A 43-byte SQL payload (a quote then many backslashes, no closing quote) through the documented `sqlparse.parse` exhausts the one call on 0.4.3 (RESOURCE_EXHAUSTION, 3/3) and finishes at once on 0.4.4 (NOT_REPRODUCED, 3/3), in a container with the same flags and limits as PyYAML.
 - **One adapter.** Everything library-specific lives behind a `Target` (`proveit/targets.py`); the sandbox, Intake, messages, evidence and advisory take a target. PyYAML's behaviour is unchanged — the same test suite, the same rehearsal digest, and `target/` byte-identical.

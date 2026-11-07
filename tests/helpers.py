@@ -58,6 +58,14 @@ class WorkDirTest(unittest.TestCase):
                                                             "sender_kind": "user"}})
 
     def say(self, agent, text, sender="maintainer", kind="user", message_id=None):
+        # Simulate the Skeptic carrying the token from the evidence it just read.
+        # Race/missing-token tests call on_triage_event directly instead.
+        if kind == "agent" and "review=" not in text:
+            import re
+            from proveit import evidence, store
+            match = re.search(r"@prove-it-intake\s+(?:concur|dispute)\s+(R-\d+)", text)
+            if match:
+                text += " review=" + evidence.review_token(store.load(match.group(1)))
         self._n = getattr(self, "_n", 0) + 1
         payload = {"body": text, "message_id": message_id or "t%d" % self._n, "thread_id": None, "sender_name": sender,
                    "sender_kind": kind}

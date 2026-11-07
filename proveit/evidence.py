@@ -1,5 +1,8 @@
 """The evidence pack: everything an agent may know about a ticket, and nothing a reporter wrote."""
 
+import hashlib
+import json
+
 from . import judge, store, targets
 
 TICKET_FIELDS = ("id", "status", "claim", "severity", "entry_point", "payload_sha256", "payload_bytes", "tags",
@@ -55,12 +58,18 @@ def is_current(review, record):
     return bool(review) and review.get("evidence") == current_evidence(record)
 
 
+def review_token(record):
+    """Identifies the immutable run files a reviewer actually inspected, not its later verdict."""
+    return hashlib.sha256(json.dumps(current_evidence(record), sort_keys=True).encode()).hexdigest()[:16]
+
+
 def pack(record):
     vulnerable = latest_run(record, "vulnerable")
     patched = patched_for(record, vulnerable)
     facts = judge.facts(record, vulnerable, patched)
     facts["skeptic_verdict_current"] = None if not record.get("skeptic") else is_current(record["skeptic"], record)
     return {
+        "review_token": review_token(record),
         "ticket": {k: record.get(k) for k in TICKET_FIELDS if k in record},
         "target": {name: spec["version"] for name, spec in targets.for_record(record).builds.items()},
         "vulnerable_run": judge.summary(vulnerable) if vulnerable else None,
@@ -111,4 +120,5 @@ def text(p):
     if p.get("override"):
         o = p["override"]
         lines.append("override by %s%s" % (o["by"], "" if o.get("current") else " (made on earlier evidence)"))
+    lines.append("review token: %s (include review=%s in a room verdict)" % (p["review_token"], p["review_token"]))
     return "\n".join(lines)

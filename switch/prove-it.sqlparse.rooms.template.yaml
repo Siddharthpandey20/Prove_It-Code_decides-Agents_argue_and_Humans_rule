@@ -51,8 +51,8 @@ rooms:
          runs `python -m proveit check <id>` (vulnerable build only) and
          explains the evidence. Intake picks the sqlparse build from the ticket.
       2. @prove-it-skeptic reads `python -m proveit evidence <id>`, works
-         through its checklist, and ends with `@prove-it-intake concur <id>`
-         or `@prove-it-intake dispute <id> <reason_code> [note]`.
+         through its checklist, and ends with `@prove-it-intake concur <id> review=<token>`
+         or `@prove-it-intake dispute <id> <reason_code> review=<token> [note]`.
       3. A maintainer may steer: ask the Reproducer for the patched build
          (`check <id> --build patched`) or the evidence pack.
       4. A maintainer decides, addressed to Intake: `escalate <id> [note]`

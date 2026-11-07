@@ -8,4 +8,4 @@ A copy of the official OSV JSON schema, used by `tests/test_advisory.py` to vali
 - Fetched: 2026-11-07.
 - Licence: Apache License 2.0, the licence of the ossf/osv-schema repository (<https://github.com/ossf/osv-schema/blob/main/LICENSE>, checked through GitHub's licence API on 2026-11-07). The file is unchanged.
 
-The schema test needs the optional `jsonschema` package and skips with a message when it is not installed (it is not installed on CI). A second test checks the required fields and their types without any package, so it always runs.
+The schema test needs the optional `jsonschema` package and skips with a message when it is not installed (CI installs jsonschema 4.26.0; local installations remain optional). A second test checks the required fields and their types without any package, so it always runs.

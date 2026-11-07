@@ -96,12 +96,16 @@ def contradiction(code, vulnerable, patched):
         if vulnerable.get("outcome") != judge.NOT_RELIABLY_REPRODUCED:
             return "the vulnerable build recorded %s; its runs agreed" % _result(vulnerable)
     elif code == "also_on_patched":
+        from .evidence import comparable
         if patched is None:
             return "no patched check has run"
-        if patched.get("outcome") == judge.NOT_REPRODUCED:
-            return "the patched build recorded %s" % _result(patched)
+        if not comparable(vulnerable, patched):
+            return "no comparable patched check has run"
+        if vulnerable.get("outcome") not in judge.REPRODUCING or patched.get("outcome") not in judge.REPRODUCING:
+            return "both comparable builds must have a reproducing outcome; the patched build recorded %s" % _result(patched)
     elif code == "patched_not_checked":
-        if patched is not None:
+        from .evidence import comparable
+        if comparable(vulnerable, patched) and patched.get("outcome") in judge.CONCLUSIVE:
             return "a patched check is recorded: %s" % _result(patched)
     return None
 

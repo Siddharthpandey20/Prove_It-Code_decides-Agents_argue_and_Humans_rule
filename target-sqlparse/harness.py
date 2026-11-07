@@ -1,6 +1,7 @@
 # COPIED FROM target/harness.py (PyYAML) for the sqlparse target. Only the
 # library-specific lines differ from that file: ENTRY_POINTS (parse/format/
-# split), and library_allowlists() imports sqlparse instead of yaml. The
+# split), library_allowlists() imports sqlparse instead of yaml, and main()
+# records the library name as sqlparse. The
 # parent's isolation, limits and classify() are identical, so both targets
 # are judged the same way. Keep the two files in step by hand.
 """The parent: runs one proof of concept and writes the only result record.

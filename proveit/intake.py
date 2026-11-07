@@ -290,6 +290,7 @@ class Intake:
         # library-2 rehearsal; the default PyYAML pair is self.intake / self.triage.
         self.pairs = {}
         self._reply = None   # the triage room the current command came from (set per command)
+        self._command_id = None
 
     # -- helpers -------------------------------------------------------------
     def pair(self, target):
@@ -347,6 +348,38 @@ class Intake:
         log.info("Intake is listening in #%s and the room it links to as %r", self.state["intake_room"], TRIAGE_LINK_LABEL)
         self.pairs[targets.DEFAULT_KEY] = (self.intake, self.triage)
         self.start_extra_targets()
+        self.resume_pending()
+        threading.Thread(target=self._retry_pending, name="proveit-delivery", daemon=True).start()
+
+    def _retry_pending(self):
+        while not self.agent._stop.wait(5):
+            self.resume_pending()
+
+    def resume_pending(self):
+        """Recover committed reports/decisions after reconnects and process restarts."""
+        with self.lock:
+            for record in store.all_tickets():
+                if not store.load_private_json(record["id"], "contact.json").get("intake_thread"):
+                    continue  # CLI-only tickets have no reporter to notify
+                try:
+                    with store.ticket_lock(record["id"]):
+                        record = store.load(record["id"])
+                        if record["status"] == "new":
+                            contact = store.load_private_json(record["id"], "contact.json")
+                            self.new_report({"body": store.private_path(record["id"], "report.md").read_text(encoding="utf-8"),
+                                "message_id": contact["message_id"], "sender_name": contact["reporter"]},
+                                targets.for_record(record))
+                            record = store.load(record["id"])
+                        if record.get("intake_delivery"):
+                            self.deliver_report(record)
+                        if record["status"] in states.TERMINAL:
+                            if record.get("decision_effects_pending"):
+                                record = actions.finish_decision(record["id"])
+                            if record.get("notified") is False:
+                                self._reply = self.pair(targets.for_record(record))[1]
+                                self.tell_reporter(record["id"], "", None)
+                except Exception:
+                    log.exception("pending work for %s will be retried", record["id"])
 
     def start_extra_targets(self):
         """Also serve any registered non-default target whose rooms exist (U4, C3).
@@ -411,12 +444,17 @@ class Intake:
         lib = lib or targets.PYYAML
         intake_room, triage_room = self.pair(lib)
         text, thread = payload["body"], payload["message_id"]
-        if store.find_by_thread(thread):
-            # A retry after a failure part-way through: the ticket exists already.
-            log.info("report %s already has a ticket; not creating another", thread)
+        record = store.find_by_thread(thread)
+        if record and record["status"] != "new":
+            with store.ticket_lock(record["id"]):
+                self.deliver_report(store.load(record["id"]))
             return
-        key, source = self.reporter_key(payload)
-        if key and reputation.is_limited(key):
+        if record:
+            contact = store.load_private_json(record["id"], "contact.json")
+            key, source = contact.get("reporter_key"), contact.get("id_source")
+        else:
+            key, source = self.reporter_key(payload)
+        if not record and key and reputation.is_limited(key):
             open_ = reputation.open_tickets(key)
             if open_:
                 # Decision D-018: one open report at a time. The new report's text is not stored anywhere.
@@ -425,12 +463,16 @@ class Intake:
                 return
         result = screen.screen(text)
         ticket = reports.parse(text, lib)
-        record = store.create({"target": lib.key}, text, source=self.source)
+        if record is None:
+            record = store.create({"target": lib.key}, text, source=self.source, contact={
+                "intake_thread": thread, "reporter": payload.get("sender_name", "unknown"),
+                "message_id": payload.get("message_id"), "reporter_key": key, "id_source": source})
         with store.ticket_lock(record["id"]):
             store.save_private_json(record["id"], "contact.json",
                                     {"intake_thread": thread, "reporter": payload.get("sender_name", "unknown"),
                                      "message_id": payload.get("message_id"), "reporter_key": key, "id_source": source})
             fill(record, ticket, lib)
+            record["last_intake_message"] = payload.get("message_id")
             if result.blocked:
                 self.quarantine(record, result, thread, "receive", lib)
                 return
@@ -461,9 +503,9 @@ class Intake:
         intake_room, triage_room = self.pair(lib)
         record["screen_rules"] = sorted({f["rule"] for f in result.findings})
         store.save_private_json(record["id"], "screen.json", result.findings)
+        record["intake_delivery"] = {"status": "quarantined", "reporter": False, "triage": False}
         store.apply(record, command, "intake", "intake", target="quarantined")
-        intake_room.post(messages.quarantined(record["id"]), thread)
-        triage_room.post(messages.quarantine_notice(record, self.mention()))
+        self.deliver_report(record)
 
     def route(self, record, ticket, thread, command, actor="intake", by="intake", lib=None):
         lib = lib or targets.for_record(record)
@@ -471,16 +513,51 @@ class Intake:
         state = target_for(ticket)  # the next ticket state, not the library target
         if state == "invalid_proof":
             self.count_invalid(record)  # saved by apply below
+        record["intake_delivery"] = {"status": state, "reporter": False, "triage": state not in ("in_triage", "quarantined")}
         store.apply(record, command, actor, by, target=state)
-        if state == "invalid_proof":
-            intake_room.post(messages.invalid_proof(record["id"], ticket.poc_problem, record.get("out_of_scope_entry"), lib), thread)
-        elif state == "awaiting_poc":
-            intake_room.post(messages.ask_for_proof(record["id"], ticket, lib), thread)
-        else:
-            intake_room.post(messages.accepted(record["id"], ticket.claim, lib), thread)
-            triage_room.post(messages.ticket_posted(record))
-            if self.auto_check:
-                threading.Thread(target=self.run_auto_check, args=(record["id"],), daemon=True).start()
+        self.deliver_report(record)
+        if state == "in_triage" and self.auto_check:
+            threading.Thread(target=self.run_auto_check, args=(record["id"],), daemon=True).start()
+
+    def deliver_report(self, record):
+        """Send only unfinished parts of a committed routing operation.
+
+        Receipts are saved after each successful post. An HTTP success followed by
+        a lost response can still duplicate a message: the Switch operation has no
+        idempotency key. This is at-least-once delivery, not exactly-once delivery.
+        """
+        delivery = record.get("intake_delivery")
+        if not delivery or all(delivery.get(k) for k in ("reporter", "triage")):
+            return
+        lib = targets.for_record(record)
+        intake_room, triage_room = self.pair(lib)
+        ticket, thread = ticket_from_record(record), self.reporter_thread(record)
+        state, errors = delivery["status"], []
+        if not delivery["reporter"]:
+            if state == "quarantined":
+                body = messages.quarantined(record["id"])
+            elif state == "invalid_proof":
+                body = messages.invalid_proof(record["id"], ticket.poc_problem, record.get("out_of_scope_entry"), lib)
+            elif state == "awaiting_poc":
+                body = messages.ask_for_proof(record["id"], ticket, lib)
+            else:
+                body = messages.accepted(record["id"], ticket.claim, lib)
+            try:
+                intake_room.post(body, thread)
+                delivery["reporter"] = True
+                store.save(record)
+            except Exception as exc:
+                errors.append(exc)
+        if not delivery["triage"]:
+            try:
+                body = messages.quarantine_notice(record, self.mention()) if state == "quarantined" else messages.ticket_posted(record)
+                triage_room.post(body)
+                delivery["triage"] = True
+                store.save(record)
+            except Exception as exc:
+                errors.append(exc)
+        if errors:
+            raise errors[0]
 
     def followup(self, record, payload):
         with store.ticket_lock(record["id"]):
@@ -495,6 +572,10 @@ class Intake:
         if sender.lower() != str(contact.get("reporter", "")).lower():
             self.foreign_reply(record, payload, thread)
             return
+        if record.get("last_intake_message") == payload.get("message_id"):
+            self.deliver_report(record)
+            return
+        self.deliver_report(record)  # finish an earlier reply before replacing its proof
         if record["status"] not in ("awaiting_poc", "invalid_proof"):
             intake_room.post("%s is %s. A maintainer will reply in this thread." % (
                 record["id"], record["status"].replace("_", " ")), thread)
@@ -504,6 +585,7 @@ class Intake:
         result = screen.screen(text)
         merged = reports.merge(ticket_from_record(record), text, lib)
         fill(record, merged, lib)
+        record["last_intake_message"] = payload.get("message_id")
         if result.blocked:
             self.quarantine(record, result, thread, "followup", lib)
             return
@@ -577,6 +659,7 @@ class Intake:
             # triage room (humans rule, decision D-022); the reporter is always told in
             # the ticket's own intake room (tell_reporter).
             self._reply = self.pair(cmd_target)[1]
+            self._command_id = payload.get("message_id")
             if not match and self.is_agent(payload):
                 return  # never answer an agent's chatter with help text: two agents could loop
             if not match:
@@ -647,16 +730,30 @@ class Intake:
         return store.load_private_json(record["id"], "contact.json").get("intake_thread")
 
     def do_concur(self, record, who, note, thread, actor="agent"):
-        record = actions.concur(record["id"], actor, who)
+        review, note = self.verdict_review(note, actor)
+        record = actions.concur(record["id"], actor, who, review=review)
         self._reply.post("%s: %s concurs with the evidence; status %s." % (
             record["id"], who, record["status"].replace("_", " ")), thread)
 
     def do_dispute(self, record, who, rest, thread, actor="agent"):
         """`dispute R-001 <reason_code> [internal note]` (decision D-013). Nothing here reaches the reporter."""
+        review, rest = self.verdict_review(rest, actor)
         parts = rest.split(None, 1)
         code, note = (parts + ["", ""])[:2]
-        record = actions.dispute(record["id"], code, actor, who, note)
+        record = actions.dispute(record["id"], code, actor, who, note, review=review)
         self._reply.post(messages.dispute_recorded(record), thread)
+
+    @staticmethod
+    def verdict_review(text, actor):
+        matches = list(re.finditer(r"(?:^|\s)review=([0-9a-f]{16})(?=\s|$)", text or ""))
+        if actor == "agent" and len(matches) != 1:
+            raise states.IllegalTransition("read evidence first and include exactly one review=<token> from that evidence pack")
+        if len(matches) > 1:
+            raise states.IllegalTransition("include exactly one review=<token>")
+        if not matches:
+            return None, text
+        match = matches[0]
+        return match.group(1), (text[:match.start()] + " " + text[match.end():]).strip()
 
     def do_evidence(self, record, who, note, thread):
         self._reply.post("```\n%s\n```" % evidence.text(evidence.pack(record)), thread)
@@ -673,10 +770,17 @@ class Intake:
         self._reply.post(actions.override_text(record), thread)
 
     def do_escalate(self, record, who, note, thread):
-        record = actions.decide(record["id"], "escalate", "human", who, note)
-        self._reply.post("%s escalated by %s. Telling the reporter." % (record["id"], who), thread)
-        self.tell_reporter(record["id"], actions.clean_reason(note), thread)
-        self._reply.post(messages.advisory_note(record["id"]), thread)
+        record = actions.decide(record["id"], "escalate", "human", who, note, request_id=self._command_id)
+        try:
+            self._reply.post("%s escalated by %s. Telling the reporter." % (record["id"], who), thread)
+        finally:
+            if not store.load(record["id"]).get("notified"):
+                self.tell_reporter(record["id"], "", thread)
+        if record.get("advisory_error"):
+            self._reply.post("%s: decision saved; advisory generation failed (%s) and will be retried." % (
+                record["id"], record["advisory_error"]), thread)
+        else:
+            self._reply.post(messages.advisory_note(record["id"]), thread)
 
     CLOSE_REASON = re.compile(r"^reason=(\S*)\s*(.*)$", re.I | re.S)
 
@@ -684,10 +788,13 @@ class Intake:
         """`close R-001 [reason=<code>] <note>`: the code picks the reporter's question (decision D-014)."""
         match = self.CLOSE_REASON.match(rest)
         reason, note = (match.group(1), match.group(2)) if match else (None, rest)
-        record = actions.decide(record["id"], "close", "human", who, note, reason=reason)
+        record = actions.decide(record["id"], "close", "human", who, note, reason=reason, request_id=self._command_id)
         asked = " with the question for %s" % record["decision_question"] if record.get("decision_question") else ""
-        self._reply.post("%s closed by %s. Telling the reporter%s." % (record["id"], who, asked), thread)
-        self.tell_reporter(record["id"], actions.clean_reason(note), thread)
+        try:
+            self._reply.post("%s closed by %s. Telling the reporter%s." % (record["id"], who, asked), thread)
+        finally:
+            if not store.load(record["id"]).get("notified"):
+                self.tell_reporter(record["id"], "", thread)
 
     def tell_reporter(self, ticket_id, note, thread):
         """Post the decision in the reporter's thread and record whether it arrived.

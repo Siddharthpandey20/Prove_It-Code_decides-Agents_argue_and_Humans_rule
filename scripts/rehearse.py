@@ -108,6 +108,7 @@ def rehearse(work):
             print("  [prove-it-skeptic] no verdict: the notes have no reason code; a maintainer reads them")
             return
         text = ("@prove-it-intake dispute %s %s" % (tid, code)) if code else ("@prove-it-intake concur %s" % tid)
+        text += " review=" + evidence.review_token(store.load(tid))
         print("  [prove-it-skeptic in #proveit-triage] " + text)
         intake.on_triage_event(None, "message", {"payload": {
             "body": text, "message_id": "s-" + tid, "thread_id": None, "sender_name": "prove-it-skeptic",
@@ -232,6 +233,7 @@ def rehearse_sqlparse(work):
             print("  [prove-it-skeptic] no verdict: the notes have no reason code; a maintainer reads them")
             return
         text = ("@prove-it-intake dispute %s %s" % (tid, code)) if code else ("@prove-it-intake concur %s" % tid)
+        text += " review=" + evidence.review_token(store.load(tid))
         print("  [prove-it-skeptic in #sqlparse-triage] " + text)
         intake.on_triage_event(None, "message", {"payload": {
             "body": text, "message_id": "s-" + tid, "thread_id": None, "sender_name": "prove-it-skeptic",

@@ -96,7 +96,7 @@ def accepted(ticket_id, claim=None, target=None):
 
 
 def cost_line(record):
-    runs = record.get("runs", [])
+    runs = record.get("runs", []) + record.get("late_runs", [])
     secs = sum((r.get("seconds") or 0) for r in runs)
     count = sum(r.get("container_runs", 1) for r in runs)  # every container a check started
     times = record.get("times", {})

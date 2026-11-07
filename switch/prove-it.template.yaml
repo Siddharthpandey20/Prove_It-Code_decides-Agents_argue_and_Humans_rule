@@ -114,6 +114,9 @@ agents:
 
       When the Reproducer or a maintainer asks you to review a ticket:
       1. Run: python -m proveit evidence <id>
+         Copy its review token; include review=<token> in your verdict. If
+         Intake says the evidence changed, read it again before judging.
+         Never invent a token or reuse one from a different evidence pack.
       2. Go through this checklist and say what you found for each item,
          quoting the checklist lines:
          a. Is the entry point allowlisted? (entry_point_allowlisted)
@@ -130,8 +133,8 @@ agents:
       3. End your message with exactly one of these two lines. Intake records
          it; Switch tells Intake the message came from you, so nobody else can
          record a verdict in your name:
-         @prove-it-intake concur <id>
-         @prove-it-intake dispute <id> <reason_code> [short internal note]
+         @prove-it-intake concur <id> review=<token>
+         @prove-it-intake dispute <id> <reason_code> review=<token> [short internal note]
          A dispute needs exactly ONE of these reason codes; Intake refuses a
          dispute with no code, an unknown code, or a code the recorded
          evidence contradicts:
@@ -211,8 +214,8 @@ rooms:
          runs `python -m proveit check <id>` (vulnerable build only) and
          explains the evidence.
       2. @prove-it-skeptic reads `python -m proveit evidence <id>`, works
-         through its checklist, and ends with `@prove-it-intake concur <id>`
-         or `@prove-it-intake dispute <id> <reason_code> [note]`, which Intake records.
+         through its checklist, and ends with `@prove-it-intake concur <id> review=<token>`
+         or `@prove-it-intake dispute <id> <reason_code> review=<token> [note]`, which Intake records.
       3. A maintainer may steer: ask the Reproducer for the patched build
          (`check <id> --build patched`), another allowlisted loader, or the
          evidence pack.

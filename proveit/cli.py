@@ -3,7 +3,7 @@
   build                          build the vulnerable and patched sandbox images
   check R-001 [--build patched]  run the ticket's payload on one build (default: vulnerable),
                                  config.CHECK_RUNS times, each in a new container
-        [--loader full_load]     ...optionally through another allowlisted entry point
+        [--loader ENTRY_POINT]   ...optionally through another entry point allowed for the ticket's target
   evidence R-001                 the evidence pack: fixed fields only, never reporter text
   show R-001                     the ticket record
   list                           tickets and their status
@@ -33,7 +33,7 @@ import json
 import os
 import sys
 
-from . import actions, evidence, judge, reasons, reports, sandbox, screen, states, store
+from . import actions, evidence, judge, reasons, reports, sandbox, screen, states, store, targets
 from .config import ENTRY_POINTS, TARGET
 
 
@@ -213,7 +213,8 @@ def main(argv=None):
     p = sub.add_parser("check")
     p.add_argument("ticket")
     p.add_argument("--build", choices=list(TARGET["builds"]), default="vulnerable")
-    p.add_argument("--loader", choices=list(ENTRY_POINTS), help="run through another allowlisted entry point")
+    p.add_argument("--loader", choices=sorted({e for t in targets.TARGETS.values() for e in t.entry_points}),
+                   help="entry point allowed for this ticket's target (validated before running)")
     p.add_argument("--by", default="cli")
     p.set_defaults(fn=cmd_check)
     p = sub.add_parser("evidence"); p.add_argument("ticket"); p.add_argument("--json", action="store_true"); p.set_defaults(fn=cmd_evidence)

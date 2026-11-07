@@ -10,11 +10,11 @@ On Apple silicon Macs, Docker Desktop or a Docker-compatible Colima runtime work
 git clone https://github.com/akhilll0305/team-pikachu-switch-ai
 cd team-pikachu-switch-ai
 python -m proveit build
-python -m unittest discover -s tests       # 266 tests, about a minute and a half, Docker running
+python -m unittest discover -s tests       # 306 tests; Docker running; duration depends on host
 python scripts/rehearse.py                 # the whole demo offline, no Switch
 ```
 
-Expected on Windows 11 (2026-11-07): `Ran 266 tests ... OK (skipped=12)`. 11 skips need macOS or Linux; the 12th is the OSV schema test, which needs the optional `jsonschema` package (nothing else to install).
+Expected on Windows 11 (2026-11-07): `Ran 306 tests ... OK (skipped=12)`. With sqlparse images present, 11 skips need macOS or Linux; the 12th is the optional OSV schema validator. Without sqlparse images there are two additional skips. The schema test passed separately with jsonschema 4.26.0; CI installs it. Source archives or shallow checkouts can also skip the unavailable Git baseline guard.
 
 `build` creates `proveit-target:vulnerable` (PyYAML 5.3.1) and `proveit-target:patched` (PyYAML 5.4). It needs network once; the sandbox never has network. Images rebuild automatically when the harness changes.
 
@@ -163,3 +163,5 @@ Record agent cost per report from Switch ROI or your provider's dashboard: `pyth
 | Nothing typed in Mattermost reaches Switch; switch-core.log repeats `mattermostdriver.websocket ... timed out during opening handshake` | Seen on 2026-11-06 on Windows. `localhost` resolves to IPv6 `::1` first, and WSL's `networkingMode=mirrored` (in `%USERPROFILE%\.wslconfig`) made `::1:<port>` hang instead of refusing, so the server's websocket to Mattermost timed out. Comment out that line, quit Console, run `wsl --shutdown`, let Docker Desktop restart, `docker start` the Mattermost container, then open Console. The server logs `Websocket authentification OK` once it reconnects |
 | Agents work (Intake records the Skeptic's verdict) but their replies never appear in `#proveit-triage`; switch-core.log says `Mattermost post /posts failed: You do not have the appropriate permissions` | Seen on 2026-11-06 after Switch re-created the agents' Mattermost bot accounts during a reconnect: the new bots were not members of the private triage channel. In `#proveit-triage` type `/invite @prove-it-reproducer @prove-it-skeptic` |
 | `Refused: only Prove It's maintainers can ...` | Add yourself: `python -m proveit.intake maintainers add <your Mattermost username>`, then restart `python -m proveit.intake run` |
+
+Branch fix pass: update the Skeptic instructions to copy `review=<token>` from `proveit evidence` into every concur/dispute message. A stale token is refused; read the evidence again. These template changes need server validation and a fresh live run. The historical live logs do not verify the new instructions.

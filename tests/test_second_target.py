@@ -5,6 +5,7 @@ they skip unless the sqlparse images are already present (built on request with
 `python -m proveit build --target sqlparse`).
 """
 
+import os
 import unittest
 
 from proveit import poc, reports, sandbox, targets
@@ -24,6 +25,8 @@ def _sqlparse_images_ready():
 
 
 IMAGES = _sqlparse_images_ready()
+if os.environ.get("PROVEIT_REQUIRE_SQLPARSE") == "1" and not IMAGES:
+    raise RuntimeError("sqlparse images are required here; run python -m proveit build --target sqlparse")
 
 
 class TargetMetadata(unittest.TestCase):

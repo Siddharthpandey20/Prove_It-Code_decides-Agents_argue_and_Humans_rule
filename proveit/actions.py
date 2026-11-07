@@ -7,7 +7,7 @@ wherever a command comes from.
 import re
 
 from . import judge, reasons, sandbox, states, store, targets
-from .evidence import current_evidence, is_current, latest_run
+from .evidence import current_evidence, is_current, latest_run, patched_for, review_token
 
 
 def _check_allowed(record, command, actor):
@@ -31,6 +31,9 @@ def check(ticket_id, build="vulnerable", actor="human", by="cli", entry_point=No
     _check_allowed(record, command, actor)
     entry = entry_point or record.get("entry_point")
     target = targets.for_record(record)
+    if entry not in target.entry_points:
+        raise states.IllegalTransition("%s is not an allowed entry point for %s (choose %s)" % (
+            entry, target.name, ", ".join(target.entry_points)))
     run = sandbox.run_check(entry, store.payload(ticket_id), build, target=target)  # minutes at most; not under the lock
     with store.ticket_lock(ticket_id):
         return _record_check(ticket_id, build, command, actor, by, run)
@@ -42,8 +45,16 @@ def container_runs(entry):
 
 
 def _record_check(ticket_id, build, command, actor, by, run):
-    path = store.save_run(ticket_id, run)
     record = store.load(ticket_id)
+    path = store.save_run(ticket_id, run)
+    if record["status"] in states.TERMINAL:
+        # Preserve the decision's evidence snapshot; keep late work auditable separately.
+        record.setdefault("late_runs", []).append({"build": build, "file": path, "at": store.now(),
+            "by": by, "actor": actor, "outcome": run.get("outcome"),
+            "seconds": run.get("total_seconds", run.get("seconds")), "container_runs": run.get("runs", 1)})
+        store.event(record, "check_finished_after_decision", by, run=path, build=build)
+        store.save(record)
+        return record, run, path
     record["runs"].append({"build": build, "file": path, "at": store.now(), "by": by, "actor": actor,
                            "outcome": run.get("outcome"),
                            "seconds": run.get("total_seconds", run.get("seconds")),
@@ -68,13 +79,14 @@ def clean_reason(text):
     return text[:300]
 
 
-def concur(ticket_id, actor, by):
+def concur(ticket_id, actor, by, review=None):
     with store.ticket_lock(ticket_id):
-        return _concur(ticket_id, actor, by)
+        return _concur(ticket_id, actor, by, review)
 
 
-def _concur(ticket_id, actor, by):
+def _concur(ticket_id, actor, by, review=None):
     record = store.load(ticket_id)
+    _validate_review(record, review)
     if latest_run(record, "vulnerable") is None:
         raise states.IllegalTransition("nothing to concur with: no check has run on %s" % ticket_id)
     evidence_now = current_evidence(record)
@@ -84,9 +96,14 @@ def _concur(ticket_id, actor, by):
     return record
 
 
-def dispute(ticket_id, code, actor, by, note=""):
+def dispute(ticket_id, code, actor, by, note="", review=None):
     with store.ticket_lock(ticket_id):
-        return _dispute(ticket_id, code, actor, by, note)
+        return _dispute(ticket_id, code, actor, by, note, review)
+
+
+def _validate_review(record, review):
+    if review is not None and review != review_token(record):
+        raise states.IllegalTransition("the evidence changed after this review; read evidence again and use its review token")
 
 
 def latest_patched(record):
@@ -97,14 +114,16 @@ def latest_patched(record):
     return None
 
 
-def _dispute(ticket_id, code, actor, by, note=""):
+def _dispute(ticket_id, code, actor, by, note="", review=None):
     """A dispute with exactly one reason code (decision D-013). The note stays in #proveit-triage."""
     code = (code or "").strip().lower()
     if code not in reasons.CODES:
         raise states.IllegalTransition("give one reason code: %s" % reasons.code_list())
     record = store.load(ticket_id)
+    _validate_review(record, review)
     _check_allowed(record, "dispute", actor)
-    problem = reasons.contradiction(code, latest_run(record, "vulnerable"), latest_patched(record))
+    vulnerable = latest_run(record, "vulnerable")
+    problem = reasons.contradiction(code, vulnerable, patched_for(record, vulnerable))
     if problem:
         raise states.IllegalTransition("%s contradicts the recorded evidence (%s)" % (code, problem))
     evidence_now = current_evidence(record)
@@ -189,9 +208,9 @@ def review_problem(record):
             "without one")
 
 
-def decide(ticket_id, verdict, actor, by, note="", reason=None):
+def decide(ticket_id, verdict, actor, by, note="", reason=None, request_id=None):
     with store.ticket_lock(ticket_id):
-        return _decide(ticket_id, verdict, actor, by, note, reason)
+        return _decide(ticket_id, verdict, actor, by, note, reason, request_id)
 
 
 def current_dispute(record):
@@ -228,7 +247,7 @@ def _count_outcome(record, verdict):
     key = contact.get("reporter_key")
     if not key:
         return  # no sender id on the report (e.g. `proveit submit`): nothing is recorded
-    if verdict == "escalate":
+    if verdict == "escalate" and not record.get("counted_good"):
         reputation.add(key, contact.get("id_source"), "good")
         record["counted_good"] = True
     elif verdict == "close" and not record.get("counted_invalid") and record.get("claim") != "info_leak":
@@ -239,9 +258,13 @@ def _count_outcome(record, verdict):
     store.save(record)
 
 
-def _decide(ticket_id, verdict, actor, by, note="", reason=None):
+def _decide(ticket_id, verdict, actor, by, note="", reason=None, request_id=None):
     """escalate or close. A close may name the reason code whose question the reporter gets."""
     record = store.load(ticket_id)
+    if (actor == "human" and by == record.get("decision_by") and request_id and
+            record.get("decision_request_id") == request_id and record["status"] ==
+            {"close": "closed", "escalate": "escalated"}.get(verdict)):
+        return _finish_decision(record)
     _check_allowed(record, verdict, actor)
     note = clean_reason(note)
     if verdict == "escalate" and record["status"] in states.CHECKED:
@@ -265,17 +288,38 @@ def _decide(ticket_id, verdict, actor, by, note="", reason=None):
         on_patched_too = bool(dispute_) and dispute_.get("code") == "also_on_patched"
         if code and not on_patched_too and reasons.question(code, record, latest_run(record, "vulnerable")):
             question_code = code  # never a rejection question over a possible new issue
-    store.apply(record, verdict, actor, by, note=note, **({"question": question_code} if question_code else {}))
-    _count_outcome(record, verdict)
+    record.update(decision_note=note, decision_by=by, notified=False, decision_effects_pending=True)
+    if request_id:
+        record["decision_request_id"] = request_id
     if verdict == "close":
         record["decision_question"] = question_code
-        store.save(record)
+    store.apply(record, verdict, actor, by, note=note, **({"question": question_code} if question_code else {}))
+    return _finish_decision(record)
+
+
+def finish_decision(ticket_id):
+    """Resume post-decision work without making a second human decision."""
+    with store.ticket_lock(ticket_id):
+        return _finish_decision(store.load(ticket_id))
+
+
+def _finish_decision(record):
+    if not record.get("decision_effects_pending"):
+        return record
+    verdict = "escalate" if record["status"] == "escalated" else "close"
+    _count_outcome(record, verdict)
     if verdict == "escalate":
-        # Only a successful escalate writes the advisory pack (decision D-017); a refusal raised above.
         from . import advisory
-        advisory.write(record)
-        record["advisory"] = advisory.display_path(ticket_id)
-        store.save(record)
+        try:
+            advisory.write(record)
+        except OSError as exc:
+            record["advisory_error"] = type(exc).__name__
+            store.save(record)
+            return record  # the decision and reporter notification still stand; retry the pack later
+        record["advisory"] = advisory.display_path(record["id"])
+        record.pop("advisory_error", None)
+    record["decision_effects_pending"] = False
+    store.save(record)
     return record
 
 
@@ -317,8 +361,9 @@ def tally():
         vuln = [x for x in r.get("runs", []) if x["build"] == "vulnerable"]
         outcome = vuln[-1]["outcome"] if vuln else "not run"
         by_outcome[outcome] = by_outcome.get(outcome, 0) + 1
-        runs += sum(container_runs(x) for x in r.get("runs", []))  # every container: a 3-run check counts 3
-        seconds += sum((x.get("seconds") or 0) for x in r.get("runs", []))  # each check's entry holds all its runs
+        recorded_runs = r.get("runs", []) + r.get("late_runs", [])
+        runs += sum(container_runs(x) for x in recorded_runs)
+        seconds += sum((x.get("seconds") or 0) for x in recorded_runs)
         ms = decision_seconds(r)
         cost = r.get("cost")
         per_report.append({"id": r["id"], "status": r["status"], "outcome": outcome,

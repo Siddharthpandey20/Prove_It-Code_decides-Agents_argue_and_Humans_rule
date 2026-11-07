@@ -8,6 +8,41 @@
 
 Built by Team Pikachu for the [Flip the Switch hackathon](https://www.wemakedevs.org/hackathons/switch), Track 1: Best Business Workflow. MIT licensed.
 
+<p align="center">
+  <a href="#how-we-use-switch">How we use Switch</a> · <a href="#how-it-works">How it works</a> · <a href="#run-it">Run it</a> · <a href="#verification-status">Verification</a>
+</p>
+
+## How we use Switch
+
+Prove It runs entirely inside a Switch server (0.31.0): people and agents from three different sources share two linked rooms, and every report, proof, check and verdict moves through them.
+
+**Agents we connected**
+
+| Agent | Built on | Connected through | Job |
+| --- | --- | --- | --- |
+| `prove-it-intake` | Our own Python agent (stdlib, no LLM) | Switch agent protocol: SSE stream per room, `post_message`, `list_linked_rooms` | Screens every report, demands a data-only proof, owns the ticket state machine, answers the reporter in their thread |
+| `prove-it-reproducer` | Claude Code | Switch-managed agent from the room template | Runs `python -m proveit check` in the Docker sandbox on the vulnerable and patched builds |
+| `prove-it-skeptic` | OpenAI Codex | Switch-managed agent from the room template | Reads the evidence pack itself and posts `concur` or a reason-coded `dispute` |
+
+**How the channels are set up**
+
+- **`#proveit-intake`**: open to reporters. Only Intake answers here; Switch Trust guardrails screen every human message before it enters the room.
+- **`#proveit-triage`**: maintainers plus the three agents. Holds the room instructions and the `verdict-rules` document.
+- **Room link labelled `triage`**: joins the two rooms. Intake finds triage through it and refuses to start without it.
+- Reproducer and Skeptic use `owner-agents` addressing, so only the maintainer who deployed the template (and their agents) can instruct them; reporters can only reach Intake. "Bypass permissions" stays off (`auto_approve: false`).
+- One template, [switch/prove-it.template.yaml](switch/prove-it.template.yaml), creates both agents, both rooms, the link, the instructions and the document in one deploy. A second set of rooms for another library ships in [switch/prove-it.sqlparse.rooms.template.yaml](switch/prove-it.sqlparse.rooms.template.yaml).
+
+**How to run it**
+
+1. Install Python 3.9+, Docker, Switch Console (Switch server 0.31.0), Claude Code and Codex.
+2. Build the sandbox images and run the offline checks: `python -m proveit build`, then `python -m unittest discover -s tests` (no Switch needed).
+3. Register Intake with Switch and add yourself as maintainer: `python -m proveit.intake setup --maintainers <your-mattermost-user>`.
+4. In Switch Console, deploy `switch/prove-it.template.yaml`; it creates the rooms, link and agents.
+5. Start Intake: `python -m proveit.intake run`.
+6. Post a report in `#proveit-intake`, then in `#proveit-triage` type `check R-001` and watch the Reproducer, Skeptic and you decide it.
+
+Full step-by-step setup, Switch Trust policy and known Switch issues with workarounds: [docs/SETUP.md](docs/SETUP.md). Recorded runs: [docs/evidence/](docs/evidence/).
+
 ## The problem
 
 Writing a plausible vulnerability report now takes an AI ten seconds. Checking one still takes a maintainer an hour. In 2026 that imbalance started shutting programs down: curl [ended its bug bounty](https://www.theregister.com/2026/01/21/curl_ends_bug_bounty/) in January after its confirmed-vulnerability rate fell below 5%, then [stopped accepting security reports for July](https://curl.se/dev/security.html). HackerOne [paused its Internet Bug Bounty](https://www.csoonline.com/article/4154216/internet-bug-bounty-program-hits-pause-on-payouts-2.html). Elastic [received more reports in six months than in 2024 and 2025 combined](https://www.elastic.co/security-labs/ai-vulnerability-triage-bug-bounty-hackerone) and built its own AI triage.
@@ -102,7 +137,7 @@ The rehearsal then shows the reporter limit on purpose (its step 6): every repla
 | "Compute CVSS" (north-echo) | **Not implemented**: the claimed severity is only checked against the outcome class | |
 | Rate limits and CAPTCHAs for automated reporting (issue, recommendations for platforms) | **Not implemented**: these belong to the platform; Switch Trust screens messages | |
 
-## Why Switch is the heart of it
+## Where Switch fits
 
 Remove Switch and the workflow has no shared rooms for the reporter, the maintainers and two agents from different vendors, no way for those agents to be told who may instruct them, and no thread to answer the reporter in. This table lists only the Switch features the code and template actually use.
 

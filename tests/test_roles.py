@@ -110,6 +110,22 @@ class VerdictsThroughIntake(WorkDirTest):
         self.assertEqual(store.load(tid)["skeptic"]["by"], "maintainer")
         self.assertEqual(store.load(tid)["timeline"][-1]["actor"], "human")
 
+    def test_inline_command_example_is_not_executed(self):
+        agent = self.make_intake()
+        tid = self.checked_ticket(agent)
+        body = "Please review this evidence. The example verdict is `@prove-it-intake concur %s`." % tid
+        self.say(agent, body, sender="maintainer")
+        self.assertIsNone(store.load(tid).get("skeptic"))
+        self.assertFalse(any(event["what"] == "concur" for event in store.load(tid)["timeline"]))
+
+    def test_command_in_fenced_example_is_not_executed(self):
+        agent = self.make_intake()
+        tid = self.checked_ticket(agent)
+        body = "Example only:\n```text\n@prove-it-intake concur %s\n```" % tid
+        self.say(agent, body, sender="maintainer")
+        self.assertIsNone(store.load(tid).get("skeptic"))
+        self.assertFalse(any(event["what"] == "concur" for event in store.load(tid)["timeline"]))
+
     def test_command_is_read_after_the_mention(self):
         agent = self.make_intake()
         tid = self.checked_ticket(agent)

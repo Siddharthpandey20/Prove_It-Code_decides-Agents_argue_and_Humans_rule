@@ -656,10 +656,24 @@ class Intake:
         self.handled.add(payload.get("message_id"))
 
     def parse_command(self, body):
-        """The command after any line's @mention of Intake, or None."""
-        for name in sorted(self.names, key=len, reverse=True):
-            for part in re.split(r"@%s\b" % re.escape(name), body, flags=re.I)[1:]:
-                match = self.COMMAND.match(part)
+        """A standalone command after Intake's mention; ignore prose and Markdown examples."""
+        fenced = None
+        for line in (body or "").splitlines():
+            fence = re.match(r"^\s*(`{3,}|~{3,})", line)
+            if fence:
+                marker = fence.group(1)[0]
+                if fenced is None:
+                    fenced = marker
+                elif marker == fenced:
+                    fenced = None
+                continue
+            if fenced is not None or line.startswith(("    ", "\t")):
+                continue
+            for name in sorted(self.names, key=len, reverse=True):
+                mention = re.match(r"^\s*@%s\b(.*)$" % re.escape(name), line, flags=re.I)
+                if not mention:
+                    continue
+                match = self.COMMAND.match(mention.group(1))
                 if match:
                     return match
         return None

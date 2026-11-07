@@ -161,11 +161,11 @@ The sandbox image is `python:3.9-slim`, pinned by digest. Python 3.9 is end of l
 ```sh
 git clone https://github.com/akhilll0305/team-pikachu-switch-ai && cd team-pikachu-switch-ai
 python -m proveit build                      # builds proveit-target:vulnerable and :patched (needs network once)
-python -m unittest discover -s tests -v      # 321 tests; duration varies by host; Docker must be running
+python -m unittest discover -s tests -v      # 325 tests; duration varies by host; Docker must be running
 python scripts/rehearse.py --twice           # replays all four PyYAML reports twice and compares
 ```
 
-Expected on Windows 11 (2026-11-07): the latest full run on this branch reported `Ran 321 tests ... OK (skipped=12)` with Docker and both target image pairs present. The OSV schema test is one skip when optional `jsonschema` is absent; it passed separately with jsonschema 4.26.0 in the earlier [fix-pass verification](docs/evidence/fix-pass-2026-11-07-windows.log). Without sqlparse images, the two sqlparse reproduction tests skip and never build an image. If Docker is not running, sandbox tests are skipped too; that is not a pass. The tests in `tests/test_agent_rules.py` check the Skeptic's Codex rules and skip when the Codex CLI is not installed. A shallow clone can additionally skip the Git baseline comparison if `c78f1ff` is unavailable; the pinned hash guard still runs. The rehearsal ends with:
+Expected on Windows 11 (2026-11-07): the latest full run on this branch reported `Ran 325 tests ... OK (skipped=15)` with Docker and both target image pairs present, on a machine without the Codex CLI (its 3 rule tests skip; with Codex installed it is 12 skips). The OSV schema test is one skip when optional `jsonschema` is absent; it passed separately with jsonschema 4.26.0 in the earlier [fix-pass verification](docs/evidence/fix-pass-2026-11-07-windows.log). Without sqlparse images, the two sqlparse reproduction tests skip and never build an image. If Docker is not running, sandbox tests are skipped too; that is not a pass. The tests in `tests/test_agent_rules.py` check the Skeptic's Codex rules and skip when the Codex CLI is not installed. A shallow clone can additionally skip the Git baseline comparison if `c78f1ff` is unavailable; the pinned hash guard still runs. The rehearsal ends with:
 
 ```
 **Tally:** 4 reports. By status: 2 closed, 1 escalated, 1 quarantined. By outcome: 1 CODE_EXECUTION, 2 NOT_REPRODUCED, 1 not run. ...
@@ -183,6 +183,24 @@ bash scripts/switch-server.sh down          # or reset, to delete its data
 ```
 
 This registers Intake, creates and links two rooms, replays all four reports as a real Mattermost user, sends maintainer decisions, and checks every ticket's final state, every reporter thread, and that escalating the quarantined report is refused. It has Intake run the checks itself (a developer/test flag), because no LLM agents are in those rooms: it proves the Switch plumbing, not the agents. Expected ending: `E2E PASSED`. A recorded run: [docs/evidence/e2e-2026-11-05.log](docs/evidence/e2e-2026-11-05.log).
+
+### Headless live checks: disputes, advisory pack, reporter limit, sqlparse rooms (about 4 minutes)
+
+```sh
+bash scripts/switch-server.sh reset && bash scripts/switch-server.sh up    # needs a fresh server
+python -m proveit build && python -m proveit build --target sqlparse
+python scripts/live_checks.py --env-file .proveit/switch-server/.env
+```
+
+This deploys the real room templates (`switch/prove-it.rooms.template.yaml` and `switch/prove-it.sqlparse.rooms.template.yaml`) unmodified through Switch, uses two separate Mattermost accounts (a reporter, and a maintainer listed in Intake's settings), and checks 35 things:
+- reason-coded disputes, including a refused contradicting code;
+- the reporter's fixed question on close;
+- the DRAFT advisory pack on escalate;
+- the one-open-report limit and who may lift it;
+- that the reporter account can't decide anything even from inside triage;
+- a sqlparse report through its own room pair, on both builds.
+
+The Reproducer and Skeptic are Switch protocol agents driven by the script. They run the same `python -m proveit` commands from their own `agents/` folders with no environment, so this proves Intake and Switch, not how Claude Code or Codex behave. Expected ending: `LIVE CHECKS PASSED`. A recorded run: [docs/evidence/live-checks-2026-11-07-headless.log](docs/evidence/live-checks-2026-11-07-headless.log).
 
 ### The full workflow in Switch Console
 
@@ -231,7 +249,7 @@ One table in [proveit/states.py](proveit/states.py) is enforced by every command
 
 ### The advisory pack
 
-When a maintainer's `escalate` succeeds, Intake writes `work/R-NNN/advisory/` and says so in `#proveit-triage`. Verified offline, not yet live.
+When a maintainer's `escalate` succeeds, Intake writes `work/R-NNN/advisory/` and says so in `#proveit-triage`. Verified offline and on a headless Switch 0.31.0 server ([headless live checks](docs/evidence/live-checks-2026-11-07-headless.log)); not yet in Switch Console.
 
 - `osv-draft.json`: an [OSV](https://ossf.github.io/osv-schema/) record. Its ID is a placeholder, `x_DRAFT-PROVEIT-R-NNN` (`x_` is OSV's prefix for local databases), never a real OSV, GHSA or CVE ID. It lists only the exact version the sandbox saw reproduce and claims no fixed version. The reporter's own wording of the version goes in `database_specific`.
 - `ghsa-draft.md`: a GitHub Security Advisory draft.
@@ -243,7 +261,7 @@ A timestamped trail like this can help a manufacturer meet the EU Cyber Resilien
 
 ### The proof record per reporter
 
-Intake keeps a record of outcomes per reporter in its private folder (`reporters.json`), keyed by an HMAC of the reporter's Switch participant id. If a message carries no id, the key is an HMAC of the display name, and the record says which field was used. It stores counts and timestamps, never names, text, payloads or titles. Verified offline, not yet live.
+Intake keeps a record of outcomes per reporter in its private folder (`reporters.json`), keyed by an HMAC of the reporter's Switch participant id. If a message carries no id, the key is an HMAC of the display name, and the record says which field was used. It stores counts and timestamps, never names, text, payloads or titles. Verified offline and on a headless Switch 0.31.0 server with separate reporter and maintainer accounts ([headless live checks](docs/evidence/live-checks-2026-11-07-headless.log)); Switch 0.31.0 does send the participant id, so the display-name fallback was not needed there. Not yet in Switch Console.
 
 - **Counts as a failed proof:** a ticket closed as `NOT_REPRODUCED` or `NOT_RELIABLY_REPRODUCED`, or a proof Intake rejected. At most one per ticket.
 - **Counts as good:** an escalated ticket.
@@ -266,18 +284,19 @@ The record belongs to Intake, not to a room: every room pair one Intake serves s
 | Original template at the historical live revision | Checked against the server, deployed from Console; current edited templates need revalidation | Accepted by Switch 0.31.0's `save_template` with no warnings, and valid against the JSON schema from its `get_template_guide`. Deployed from Switch Console 0.40.1 on 2026-11-06 (agents first, then the rooms with [the rooms-only copy](switch/prove-it.rooms.template.yaml) after a Mattermost outage; see SETUP troubleshooting) |
 | Historical Reproducer/Skeptic workflow | Verified live at the historical revision (Windows 11, Console 0.40.1); current branch live trial is partial | Historical four-replay run: check, patched check, Skeptic review, refused escalation, override, escalate, close, quarantine, tally. [Room log](docs/evidence/live-console-2026-11-06-windows.log), [R-001 evidence](docs/evidence/live-2026-11-06-windows-R-001/) |
 | Isolated trial R-001: PyYAML 5.3.1 and 5.4 comparison, 3/3 each, followed by a visible current Skeptic concurrence | Partial live; Skeptic's own evidence command failed to import the project, and a maintainer supplied the pack | [Sanitized trial status](docs/evidence/live-trial-2026-11-07-status.md) |
+| Agents can run `python -m proveit` from their own folders without any environment, and the folder fixes their role | Verified offline and in the headless checks; **not yet with the Switch-managed Skeptic** | `agents/*/proveit/__init__.py`, `tests/test_agent_folders.py`. Fixes the managed Skeptic's `No module named proveit` (its session did not apply `PYTHONPATH`) and stops a session without role variables from counting as a human |
 | Agent lockdown files applied by Claude Code and Codex | Partly verified | Both folders trusted; in the live run the agents ran only their allowed `proveit` commands. Not yet tried: asking an agent to read `~/.proveit` or run a forbidden command. Codex's read-only profile is tested on macOS and Linux; on Windows those tests skip |
 | Switch Trust blocking fixture 04 | Verified live (Windows 11, Console 0.40.1, 2026-11-06) | Regex-only policy: 04 blocked before the room (no ticket, Intake saw nothing); 01, 02 + proof and 03 became tickets with payload SHA-256s matching the files; every agent reply and maintainer command passed unchanged. With Jailbreak also on, report 02's proof was blocked too. [Trust log](docs/evidence/live-trust-2026-11-06-windows.log) |
 | Clean-state repeats: 3 sequential runs per check, `NOT_RELIABLY_REPRODUCED` blocks escalation, Docker start failure records nothing | Partly live: isolated R-001 ran 3/3 on both builds; broader live behavior remains unverified | `tests/test_repeats.py`, `tests/test_sandbox.py` (`Repeats`), [trial status](docs/evidence/live-trial-2026-11-07-status.md) |
-| Reason-coded disputes, contradicting codes refused, one fixed reporter question on close | Verified offline, not yet live | `tests/test_reasons.py` |
+| Reason-coded disputes, contradicting codes refused, one fixed reporter question on close | Verified headless on Switch 0.31.0 (2026-11-07, separate reporter and maintainer accounts; Reproducer/Skeptic are scripted protocol agents); not yet with Claude Code/Codex | `tests/test_reasons.py`; [headless live checks](docs/evidence/live-checks-2026-11-07-headless.log) |
 | Scope policy enforced at Intake | Verified offline, not yet live | `tests/test_scope.py` |
 | Four-field proof request, `affected_version` required, `expected`/`actual` never reach agents | Verified offline, not yet live | `tests/test_report_fields.py`, `tests/test_sandbox.py` (`Canary`) |
-| DRAFT advisory pack on escalate (OSV, GHSA, timeline) | Verified offline, not yet live | `tests/test_advisory.py`; the OSV schema test needs the optional `jsonschema` and skips without it |
-| Proof record per reporter and the one-open-report limit | Verified offline, not yet live | `tests/test_reputation.py`, rehearsal step 6 |
-| Second target behind one adapter; PyYAML sandbox and rehearsal outcomes preserved (`target/` byte-identical); agent verdicts now require review tokens | Verified offline, not yet live | `tests/test_targets.py`, `tests/test_second_target.py` |
-| sqlparse CVE-2023-30608 reproduces on 0.4.3, not on 0.4.4 (same sandbox and limits) | Verified offline, not yet live | `tests/test_second_target.py` (Docker), `python scripts/rehearse.py --second-target --twice` |
-| One Intake, two rooms: target from the room not the text; global ids; shared reporter record; cross-room decisions | Verified offline, not yet live | `tests/test_rooms.py` |
-| sqlparse room pair deployed from its own template | **Not yet deployed** | `switch/prove-it.sqlparse.rooms.template.yaml`; the currently registered trial agents still need the updated target-neutral instructions |
+| DRAFT advisory pack on escalate (OSV, GHSA, timeline) | Verified headless on Switch 0.31.0 (2026-11-07, separate reporter and maintainer accounts; Reproducer/Skeptic are scripted protocol agents); not yet with Claude Code/Codex | `tests/test_advisory.py` (the OSV schema test needs the optional `jsonschema` and skips without it); [headless live checks](docs/evidence/live-checks-2026-11-07-headless.log): note in triage, files in the work folder, no payload or reporter prose |
+| Proof record per reporter and the one-open-report limit | Verified headless on Switch 0.31.0 (2026-11-07, separate reporter and maintainer accounts; Reproducer/Skeptic are scripted protocol agents); not yet with Claude Code/Codex | `tests/test_reputation.py`, rehearsal step 6; [headless live checks](docs/evidence/live-checks-2026-11-07-headless.log): limit after two failed proofs, refused for the reporter account, lifted by the maintainer. Switch 0.31.0 sends `sender` for human messages, so the record is keyed by participant id |
+| Second target behind one adapter; PyYAML sandbox and rehearsal outcomes preserved (`target/` byte-identical); agent verdicts now require review tokens | Verified offline; review tokens also verified headless ([headless live checks](docs/evidence/live-checks-2026-11-07-headless.log)) | `tests/test_targets.py`, `tests/test_second_target.py` |
+| sqlparse CVE-2023-30608 reproduces on 0.4.3, not on 0.4.4 (same sandbox and limits) | Verified offline, and through Intake on a headless Switch 0.31.0 server ([headless live checks](docs/evidence/live-checks-2026-11-07-headless.log)) | `tests/test_second_target.py` (Docker), `python scripts/rehearse.py --second-target --twice` |
+| One Intake, two rooms: target from the room not the text; global ids; shared reporter record; cross-room decisions | Verified headless on Switch 0.31.0 (2026-11-07, separate reporter and maintainer accounts; Reproducer/Skeptic are scripted protocol agents); not yet with Claude Code/Codex | `tests/test_rooms.py`; [headless live checks](docs/evidence/live-checks-2026-11-07-headless.log) |
+| sqlparse room pair deployed from its own template | Deployed unmodified by Switch 0.31.0's `create_room_from_yaml` on a headless server ([headless live checks](docs/evidence/live-checks-2026-11-07-headless.log)); **not yet deployed in Switch Console** | `switch/prove-it.sqlparse.rooms.template.yaml`; the currently registered trial agents still need the updated target-neutral instructions |
 | Trust red-team eval score | **Not yet run** | |
 | Agent cost per report | **Not recorded** | `proveit cost` once a human reads Switch ROI or a provider dashboard |
 
@@ -309,7 +328,7 @@ Three matching runs show repeatability for those inputs, builds and limits, not 
 
 The default build prepares PyYAML. To exercise sqlparse, explicitly run `python -m proveit build --target sqlparse` and `python scripts/rehearse.py --second-target --twice`. CI builds both targets, requires the sqlparse Docker checks, validates OSV drafts with jsonschema and runs both rehearsals; the edited CI configuration still needs a hosted run.
 
-## A second target (verified offline, not yet live)
+## A second target (verified offline and on a headless Switch server, not yet in Switch Console)
 
 The same Intake, Reproducer and Skeptic are designed to serve more than one library; this routing has been tested offline. A second target, **sqlparse**, is built and verified offline to show it:
 

@@ -43,6 +43,24 @@ The following rules govern all hackathon work:
 
 ## Current status
 
+**2026-11-07 evening, `feat/second-library` follow-up (no Switch Console on this machine):**
+- The managed Skeptic's `No module named proveit` is fixed in the repo. Its `PYTHONPATH` and its role variables come only from the Codex project config, and the managed session did not apply them; without the role variables the CLI would also have treated its shell as a human.
+- `agents/skeptic/proveit/` and `agents/reproducer/proveit/` now make `python -m proveit` work from each agent's folder with no environment, and fix the folder's role (decision D-026). Evidence: `tests/test_agent_folders.py`.
+- `scripts/live_checks.py` ran against a headless Switch 0.31.0 server with separate reporter and maintainer Mattermost accounts: 35/35 passed ([log](docs/evidence/live-checks-2026-11-07-headless.log)).
+  - Both room templates deployed unmodified.
+  - Reason-coded dispute accepted, contradicting code refused, fixed question on close.
+  - Advisory pack written and announced.
+  - Reporter limit applied, refused to the reporter account, lifted by the maintainer.
+  - A sqlparse ticket checked on 0.4.3/0.4.4, reviewed and escalated in its own rooms.
+  - Switch 0.31.0 sends `sender` for human messages.
+- The Reproducer and Skeptic there were scripted Switch protocol agents, so Claude Code/Codex behaviour in Console is still unverified.
+- **Next (needs Switch Console):**
+  - Pull the branch.
+  - Paste the current template instructions into both agents.
+  - Have the managed Skeptic run `python -m proveit evidence R-001` and post its verdict.
+  - Deploy `switch/prove-it.sqlparse.rooms.template.yaml`.
+  - Repeat items 2 to 6 with the real agents and separate accounts.
+
 **2026-11-07 isolated trial live status:** The user restored Claude Code access and the isolated PyYAML trial ran R-001 on both builds. Claude recorded CODE_EXECUTION on PyYAML 5.3.1 through `full_load` in 3/3 clean runs; the patched 5.4 run was NOT_REPRODUCED in 3/3. A read-only inspection of the local triage history confirms a visible current Skeptic concurrence after a maintainer supplied the sanitized current evidence pack. This does not show the Skeptic independently reading the pack: its managed evidence command failed to import `proveit`. No ticket escalation or close has occurred.
 
 The first Switch-managed Codex evidence command failed with `No module named proveit`. The generated Codex project config contains the checkout in `PYTHONPATH`; a read-only Codex sandbox check from the Skeptic folder can import the project with the installed Python executable. This narrows the remaining failure to the Switch-managed session environment or interpreter selection; the managed session still needs a fresh end-to-end check. The Codex review was completed from a maintainer-supplied sanitized evidence pack.
@@ -147,6 +165,7 @@ These records are authoritative. Keep their IDs and reasons when updating them; 
 - **D-024 — Resume committed delivery and advisory work; bind agent verdicts to the evidence read.** Delivery receipts and pending decision effects survive restarts; a failed triage acknowledgement cannot prevent reporter notification. The same platform decision message is idempotent. HTTP acknowledgement loss can still duplicate a post (at least once, not exactly once). Agent room verdicts must carry the review token copied from the evidence pack; a changed token is refused under the ticket lock. Late checks are kept in `late_runs` without changing a terminal decision's evidence. Reason: preserve work through failures and avoid approving a run the Skeptic never inspected. Sources: `tests/test_fix_pass.py`, `tests/test_targets.py`, 2026-11-07.
 
 - **D-025 — Verify the second branch in isolated trial rooms and commit one logical change at a time.** Generated trial names, settings, credentials and ticket/private paths are separate from the working demo; its linked triage names are checked before serving them. Preserve the existing provider lockdowns. Reason: a failed live trial must not displace the working workflow, and a published regression can be undone with a normal revert. Source: user instruction on 2026-11-07, `tests/test_trial.py`, [trial guide](docs/TRIAL.md). Live behavior remains unverified until recorded.
+- **D-026 — An agent's folder, not its environment, decides how `python -m proveit` is found and which role it runs as.** Reason: on 2026-11-07 the Switch-managed Skeptic's session did not apply `PYTHONPATH` from its Codex config, so it could not import the project, and the same missing variables would have left its shell with a human's permissions. Source: `agents/*/proveit/__init__.py`, `tests/test_agent_folders.py`.
 
 ## Important history and trials
 

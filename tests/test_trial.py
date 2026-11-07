@@ -134,6 +134,19 @@ class Preparation(unittest.TestCase):
                 self.assertIn("channel_type: channel_private", text)
             text = (folder / "prove-it.template.yaml").read_text()
             self.assertIn("{directory}/.proveit-trials/review/agents/skeptic", text)
+            generated = yaml.safe_load(text)
+            for role in ("prove-it-reproducer", "prove-it-skeptic"):
+                instruction = next(
+                    agent["instructions"] for agent in generated["agents"]
+                    if agent["name"].endswith(role)
+                )
+                self.assertNotIn("PyYAML", instruction)
+                self.assertNotIn("safe_load", instruction)
+                self.assertNotIn("full_load", instruction)
+                if role.endswith("reproducer"):
+                    self.assertIn("ticket's target", instruction)
+                else:
+                    self.assertIn("this room's scope-policy doc", instruction)
             self.assertIn("auto_approve: false", text)
             with self.assertRaises(FileExistsError):
                 trial.prepare("review", root)

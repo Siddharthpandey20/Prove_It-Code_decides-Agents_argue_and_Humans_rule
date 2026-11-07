@@ -10,11 +10,11 @@ On Apple silicon Macs, Docker Desktop or a Docker-compatible Colima runtime work
 git clone https://github.com/akhilll0305/team-pikachu-switch-ai
 cd team-pikachu-switch-ai
 python -m proveit build
-python -m unittest discover -s tests       # 318 tests; Docker running; duration depends on host
+python -m unittest discover -s tests       # 321 tests; Docker running; duration depends on host
 python scripts/rehearse.py                 # the whole demo offline, no Switch
 ```
 
-Expected on Windows 11 (2026-11-07): `Ran 318 tests ... OK (skipped=12)`. With sqlparse images present, 11 skips need macOS or Linux; the 12th is the optional OSV schema validator. Without sqlparse images there are two additional skips. The latest full run with jsonschema 4.26.0 passed all 318 tests with 11 skips ([evidence](evidence/trial-isolation-2026-11-07-windows.log)); CI installs this optional dependency. Source archives or shallow checkouts can also skip the unavailable Git baseline guard.
+Expected on Windows 11 (2026-11-07): the latest full run on this branch reported `Ran 321 tests ... OK (skipped=12)` with Docker and both image pairs present. The optional OSV schema test is skipped when `jsonschema` is absent; it passed separately with jsonschema 4.26.0 ([earlier fix-pass evidence](evidence/fix-pass-2026-11-07-windows.log)). Without sqlparse images, the two sqlparse reproduction tests add two skips and never build an image. Source archives or shallow checkouts can also skip the unavailable Git baseline guard.
 
 `build` creates `proveit-target:vulnerable` (PyYAML 5.3.1) and `proveit-target:patched` (PyYAML 5.4). It needs network once; the sandbox never has network. Images rebuild automatically when the harness changes.
 

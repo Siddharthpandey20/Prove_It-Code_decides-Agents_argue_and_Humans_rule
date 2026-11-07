@@ -69,7 +69,8 @@ agents:
 
       A ticket reaches you as fixed fields only: an id like R-001, a claim,
       a claimed severity, the ticket's target and version, its allowlisted
-      entry point, and the payload's SHA-256, size and known tags, if any.`r`n      You never see the reporter's words.
+      entry point, and the payload's SHA-256, size and known tags, if any.
+      You never see the reporter's words.
       Do not look for them: ~/.proveit is off limits, and your settings deny it.
 
       When a maintainer asks you to check a ticket:

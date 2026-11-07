@@ -25,9 +25,15 @@ os.environ["PROVEIT_ACTOR"] = "agent"
 os.environ["PROVEIT_AGENT"] = ROLE
 os.environ.setdefault("PYTHONDONTWRITEBYTECODE", "1")
 
-_REAL = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "proveit"))
-if not os.path.isfile(os.path.join(_REAL, "cli.py")):
-    raise ImportError("Prove It's package was not found at %s; is this folder inside a Prove It checkout?" % _REAL)
+_ROOT = os.path.dirname(os.path.abspath(__file__))
+while True:
+    _REAL = os.path.join(_ROOT, "proveit")
+    if os.path.isfile(os.path.join(_REAL, "cli.py")):
+        break
+    _PARENT = os.path.dirname(_ROOT)
+    if _PARENT == _ROOT:
+        raise ImportError("Prove It's package was not found above %s; is this folder inside a Prove It checkout?" % __file__)
+    _ROOT = _PARENT
 __path__ = [_REAL]
 __file__ = os.path.join(_REAL, "__init__.py")
 with open(__file__, encoding="utf-8") as _handle:

@@ -4,6 +4,8 @@ import io
 import json
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -72,6 +74,28 @@ class Plans(unittest.TestCase):
 
 
 class Preparation(unittest.TestCase):
+    def test_generated_agent_stubs_find_checkout_from_nested_trial_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "checkout"
+            shutil.copytree(ROOT / "agents", root / "agents")
+            shutil.copytree(ROOT / "switch", root / "switch")
+            shutil.copytree(ROOT / "proveit", root / "proveit")
+            p = trial.prepare("review", root)
+            env = {k: v for k, v in os.environ.items()
+                   if k not in ("PYTHONPATH", "PROVEIT_ACTOR", "PROVEIT_AGENT")}
+            code = ("import os, proveit.config as c; "
+                    "print(c.REPO_ROOT); "
+                    "print(os.environ['PROVEIT_ACTOR'] + ':' + os.environ['PROVEIT_AGENT'])")
+            for role in ("reproducer", "skeptic"):
+                with self.subTest(role=role):
+                    proc = subprocess.run(
+                        [sys.executable, "-c", code],
+                        cwd=Path(p["agent_directories"][role]), env=env,
+                        capture_output=True, text=True, timeout=30,
+                    )
+                    self.assertEqual(proc.returncode, 0, proc.stderr)
+                    self.assertEqual(proc.stdout.splitlines(), [str(root.resolve()), "agent:" + role])
+
     def test_setup_refuses_unprepared_trial_before_registering(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(config, "REPO_ROOT", Path(tmp)), \
                 mock.patch("proveit.intake.register_agent") as register:

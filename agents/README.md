@@ -63,3 +63,16 @@ rules and sandbox profile with Codex itself (`codex execpolicy` and `codex
 sandbox`) when Codex is installed.
 
 Every agent verdict must carry `review=<token>` copied from the evidence pack it inspected. Intake checks the token while holding the ticket lock; a delayed verdict is refused after the evidence changes. Maintainer verdicts may omit it. Update the live Skeptic instructions before using this branch.
+
+## How `python -m proveit` works from these folders
+
+Each folder has a small `proveit/` package (`agents/<role>/proveit/__init__.py`).
+Python looks in the working folder first for `python -m`, so the agent finds it.
+It points at the real `proveit/` in the checkout from its own location, and it
+fixes the folder's role (`PROVEIT_ACTOR=agent`, `PROVEIT_AGENT=<role>`).
+
+This does not depend on the session applying `PYTHONPATH` or role variables from
+the agent's config. On 2026-11-07 the Switch-managed Skeptic's session did not,
+and failed with `No module named proveit`. An environment that claims to be a
+human cannot widen the role either. `tests/test_agent_folders.py` checks both
+folders with those variables removed.

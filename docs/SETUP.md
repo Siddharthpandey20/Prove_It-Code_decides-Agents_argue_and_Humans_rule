@@ -10,11 +10,11 @@ On Apple silicon Macs, Docker Desktop or a Docker-compatible Colima runtime work
 git clone https://github.com/akhilll0305/team-pikachu-switch-ai
 cd team-pikachu-switch-ai
 python -m proveit build
-python -m unittest discover -s tests       # 306 tests; Docker running; duration depends on host
+python -m unittest discover -s tests       # 318 tests; Docker running; duration depends on host
 python scripts/rehearse.py                 # the whole demo offline, no Switch
 ```
 
-Expected on Windows 11 (2026-11-07): `Ran 306 tests ... OK (skipped=12)`. With sqlparse images present, 11 skips need macOS or Linux; the 12th is the optional OSV schema validator. Without sqlparse images there are two additional skips. The schema test passed separately with jsonschema 4.26.0; CI installs it. Source archives or shallow checkouts can also skip the unavailable Git baseline guard.
+Expected on Windows 11 (2026-11-07): `Ran 318 tests ... OK (skipped=12)`. With sqlparse images present, 11 skips need macOS or Linux; the 12th is the optional OSV schema validator. Without sqlparse images there are two additional skips. The latest full run with jsonschema 4.26.0 passed all 318 tests with 11 skips ([evidence](evidence/trial-isolation-2026-11-07-windows.log)); CI installs this optional dependency. Source archives or shallow checkouts can also skip the unavailable Git baseline guard.
 
 `build` creates `proveit-target:vulnerable` (PyYAML 5.3.1) and `proveit-target:patched` (PyYAML 5.4). It needs network once; the sandbox never has network. Images rebuild automatically when the harness changes.
 
@@ -56,7 +56,7 @@ Then, for each agent:
 
 - Confirm **Bypass permissions** is off. The template sets `auto_approve: false`; check that Console shows it that way.
 - Trust its folder once, so its project settings apply (trusting the whole checkout also covers both folders): run `claude` in `agents/reproducer` and accept the trust prompt; run `codex` in `agents/skeptic` and trust the project. Deny rules in Claude Code apply even before trust; allow rules and the `env` block wait for it.
-- Skeptic only: run `python -m proveit concur <a ticket id>` from Codex once. If it fails with a write error, Codex resolved `writable_roots = ["../../work"]` differently than expected; replace it in `agents/skeptic/.codex/config.toml` with the absolute path of your checkout's `work` folder.
+- Skeptic only: preserve its read-only sandbox. It records verdicts by posting to Intake in the room with the evidence's `review=<token>`; it does not run the `concur` or `dispute` CLI and needs no writable ticket directory.
 
 The two agents use `addressing: owner-agents`: only you (the deployer) and your own agents can instruct them. Other maintainers you add to `#proveit-triage` can still decide through Intake (`escalate`, `close`, `override`, `release`), which checks that the sender is a person.
 
@@ -165,3 +165,5 @@ Record agent cost per report from Switch ROI or your provider's dashboard: `pyth
 | `Refused: only Prove It's maintainers can ...` | Add yourself: `python -m proveit.intake maintainers add <your Mattermost username>`, then restart `python -m proveit.intake run` |
 
 Branch fix pass: update the Skeptic instructions to copy `review=<token>` from `proveit evidence` into every concur/dispute message. A stale token is refused; read the evidence again. These template changes need server validation and a fresh live run. The historical live logs do not verify the new instructions.
+
+For a separate trial of the second branch without replacing the working demo, use [the isolated trial guide](TRIAL.md).

@@ -170,3 +170,10 @@ Each item is verified offline, not yet live. It is stacked on `feat/openssf-tria
 - Build waiting has an effective deadline even for silent builds. CI explicitly builds/rehearses sqlparse and requires its Docker tests; OSV schema validation is installed.
 - Evidence: `tests/test_fix_pass.py`, `tests/test_targets.py`, `tests/test_portability.py`. Final Windows checks: 306 tests OK, 12 expected skips; optional OSV schema test passed separately with jsonschema 4.26.0. Both rehearsals passed twice with unchanged digests. See [verification log](evidence/fix-pass-2026-11-07-windows.log).
 - Not verified live: updated instructions/templates, permission probes, outsider checks, Trust red-team evaluation and recorded costs. Historical live logs remain historical.
+
+
+## R. Isolated second-branch trial preparation (2026-11-07)
+
+- [x] Trial-specific names, generated settings/templates, credentials and ticket/private storage. Existing agent permission rules preserved; unexpected triage links refused. Evidence: `tests/test_trial.py` (12 tests), [guide](TRIAL.md).
+- [x] Full suite: 318 tests OK (11 Windows skips), including the OSV schema check. Both rehearsals passed twice with unchanged digests; protected PyYAML target files/image IDs unchanged. [Verification log](evidence/trial-isolation-2026-11-07-windows.log).
+- [ ] Generated trial deployed and actual Claude/Codex behavior, permissions and cross-room flow verified. Offline checks do not complete this item.

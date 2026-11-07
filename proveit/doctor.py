@@ -106,7 +106,8 @@ def check_private_home(r):
 def load_intake_state():
     """Intake's state, read from where it is now (the doctor never moves files)."""
     from .intake import LEGACY_STATE_FILE, STATE_FILE
-    for path in (STATE_FILE, LEGACY_STATE_FILE):
+    paths = (STATE_FILE,) if os.environ.get("PROVEIT_STATE") else (STATE_FILE, LEGACY_STATE_FILE)
+    for path in paths:
         if path.exists():
             return json.loads(path.read_text(encoding="utf-8")), path
     return None, STATE_FILE
@@ -136,7 +137,18 @@ def check_switch(r, state):
     r.add(PASS, "Switch server", state["api_url"])
     by_name = {room["name"]: room for room in rooms}
     wanted = {"intake": state.get("intake_room", "proveit-intake"), "triage": state.get("triage_room", "proveit-triage")}
-    for role, name in wanted.items():
+    wanted_pairs = list(wanted.items())
+    from . import targets
+    from .trial import room_names
+    for key in state.get("target_rooms") or {}:
+        if key == targets.DEFAULT_KEY:
+            continue
+        if key not in targets.TARGETS:
+            r.add(FAIL, "target room configuration", "unknown target " + key)
+            continue
+        intake_name, triage_name = room_names(state, targets.get(key))
+        wanted_pairs.extend([("intake", intake_name), ("triage", triage_name)])
+    for role, name in wanted_pairs:
         room = by_name.get(name)
         if not room:
             r.add(FAIL, "room #%s" % name, "Intake is not in it; deploy switch/prove-it.template.yaml")
@@ -176,9 +188,10 @@ def agent_sessions():
     return sorted(sessions, key=lambda s: s["mtime"], reverse=True)
 
 
-def check_agent_folders(r, sessions=None):
+def check_agent_folders(r, sessions=None, state=None):
     sessions = agent_sessions() if sessions is None else sessions
     folders = {"reproducer": config.REPO_ROOT / "agents" / "reproducer", "skeptic": config.REPO_ROOT / "agents" / "skeptic"}
+    folders.update({role: Path(path) for role, path in (state or {}).get("agent_directories", {}).items()})
     if not sessions:
         r.add(WARN, "agent folders", "no Switch Console agent sessions found on this machine; deploy the template "
               "and check again")
@@ -192,15 +205,17 @@ def check_agent_folders(r, sessions=None):
                 r.add(WARN if s["mode"] == "auto" else PASS, "the %s's permission mode" % role,
                       "Console starts it in %r mode; see agents/README.md (\"Things to check\")" % s["mode"])
         else:
-            elsewhere = [s for s in sessions if s["name"] == "prove-it-%s" % role]
+            expected_name = (state or {}).get(role, "prove-it-%s" % role)
+            elsewhere = [s for s in sessions if s["name"] == expected_name]
             r.add(FAIL, "the %s's folder" % role, "its session starts in %s, so its lockdown in %s does not apply; "
                   "redeploy the template" % (elsewhere[0]["cwd"] if elsewhere else "no folder found", folder)
                   if elsewhere else "no Console session for it yet; deploy the template")
 
 
-def check_trust(r):
+def check_trust(r, state=None):
     claude = Path.home() / ".claude.json"
     folder = config.REPO_ROOT / "agents" / "reproducer"
+    folder = Path((state or {}).get("agent_directories", {}).get("reproducer", folder))
     try:
         projects = json.loads(claude.read_text(encoding="utf-8")).get("projects", {})
         trusted = any(projects.get(str(p), {}).get("hasTrustDialogAccepted") for p in [folder] + list(folder.parents))
@@ -212,6 +227,7 @@ def check_trust(r):
     try:
         text = codex.read_text(encoding="utf-8")
         skeptic = config.REPO_ROOT / "agents" / "skeptic"
+        skeptic = Path((state or {}).get("agent_directories", {}).get("skeptic", skeptic))
         trusted = any(('[projects."%s"]' % p) in text for p in [skeptic] + list(skeptic.parents))
         r.add(PASS if trusted else WARN, "Codex trusts agents/skeptic",
               "" if trusted else "run `codex` in agents/skeptic once and trust the project")
@@ -237,8 +253,8 @@ def run(out=None, live=True):
     state = check_intake(r)
     if state and live:
         check_switch(r, state)
-    check_agent_folders(r)
-    check_trust(r)
+    check_agent_folders(r, state=state)
+    check_trust(r, state=state)
     check_replay_login(r)
     r.out.write("\n%s\n" % ("NOT READY: fix the FAIL lines above." if r.failed else "READY (read any WARN lines)."))
     return r

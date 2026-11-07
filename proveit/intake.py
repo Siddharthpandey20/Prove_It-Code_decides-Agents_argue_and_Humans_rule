@@ -29,7 +29,7 @@ import sys
 import threading
 from pathlib import Path
 
-from . import actions, evidence, messages, reasons, reports, reputation, screen, states, store, targets
+from . import actions, config, evidence, messages, reasons, reports, reputation, screen, states, store, targets
 from .config import LEGACY_STATE_DIR, PROVEIT_HOME, ensure_home
 from .switch_client import Agent, CursorStore, SwitchError, open_to_everyone, register_agent
 
@@ -105,7 +105,7 @@ def load_state():
 
 
 def save_state(state):
-    if STATE_FILE.parent == PROVEIT_HOME:
+    if STATE_FILE.parent == config.PROVEIT_HOME:
         ensure_home()
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     STATE_FILE.write_text(json.dumps(state, indent=2), encoding="utf-8")
@@ -113,6 +113,15 @@ def save_state(state):
 
 
 def cmd_setup(args):
+    from .trial import plan
+    trial = plan(args.trial) if getattr(args, "trial", None) else None
+    if trial and not (Path(trial["folder"]) / "trial.json").is_file():
+        sys.exit("Prepare the trial first: python -m proveit.trial " + args.trial)
+    if trial and args.create_rooms:
+        sys.exit("For a trial, deploy only its generated templates; they keep triage private")
+    if trial and (args.agent_name != DEFAULTS["agent_name"] or any(getattr(args, key) for key in
+            ("intake_room", "triage_room", "reproducer", "skeptic"))):
+        sys.exit("--trial supplies isolated agent/room names; do not combine it with name overrides")
     env_file = args.env_file
     if not env_file:
         candidates = console_env_candidates()
@@ -127,7 +136,7 @@ def cmd_setup(args):
         sys.exit("%s has no AGENT_REGISTRATION_TOKEN" % env_file)
     print("Switch server: %s (settings from %s)" % (api_url, env_file))
 
-    name = args.agent_name
+    name = trial["agent_name"] if trial else args.agent_name
     try:
         reg = register_agent(api_url, token, name,
                              "Prove It intake: screens bug reports and asks for a runnable proof before any human reads them.",
@@ -146,6 +155,10 @@ def cmd_setup(args):
               "'Who can talk to your agent' to everyone." % env_file)
 
     state = dict(DEFAULTS, agent_name=name, api_url=api_url, agent_id=reg["id"], api_key=reg["api_key"])
+    if trial:
+        state.update({key: trial[key] for key in ("agent_name", "reproducer", "skeptic", "intake_room", "triage_room",
+                                                   "target_rooms", "agent_directories")})
+        state["trial"] = args.trial
     for key in ("intake_room", "triage_room", "reproducer", "skeptic"):
         if getattr(args, key):
             state[key] = getattr(args, key)
@@ -173,7 +186,7 @@ def cmd_setup(args):
         except SwitchError as exc:
             print("note: could not link rooms (%s)" % exc)
         print("Rooms ready: %s, %s (linked as %r)" % (state["intake_room"], state["triage_room"], TRIAGE_LINK_LABEL))
-    print("\nNext: python -m proveit.intake run")
+    print("\nNext: python -m proveit.intake%s run" % (" --trial " + args.trial if trial else ""))
 
 
 # --------------------------------------------------------------------------
@@ -342,6 +355,8 @@ class Intake:
             sys.exit("#%s has no Switch room link labelled %r, so Intake does not know where to send tickets. "
                      "Deploy switch/prove-it.template.yaml (it creates the link) or run setup with --create-rooms."
                      % (self.state["intake_room"], TRIAGE_LINK_LABEL))
+        if self.state.get("trial") and self.agent.room_id(self.state["triage_room"]) != triage_id:
+            sys.exit("The trial intake links outside its expected triage room; refusing to connect")
         self.triage = self.agent.connect(triage_id, self.on_triage_event, cursors=self.cursors, failed_log=self.failed_log)
         if not self.triage.ready.wait(20):
             sys.exit("Could not open the event stream for room %s" % triage_id)
@@ -393,11 +408,13 @@ class Intake:
         for target in targets.TARGETS.values():
             if target.key == targets.DEFAULT_KEY:
                 continue
-            extra_intake_id = self.agent.room_id(target.intake_room)
+            from .trial import room_names
+            intake_name, triage_name = room_names(self.state, target)
+            extra_intake_id = self.agent.room_id(intake_name)
             if not extra_intake_id:
                 log.warning("room #%s for target %s not found; not serving it (PyYAML is unaffected). Deploy "
                             "switch/prove-it.%s.rooms.template.yaml to enable it.",
-                            target.intake_room, target.key, target.key)
+                            intake_name, target.key, target.key)
                 continue
             intake_conn = self.agent.connect(extra_intake_id, functools.partial(self.on_intake_event, target=target),
                                              cursors=self.cursors, failed_log=self.failed_log)
@@ -406,13 +423,15 @@ class Intake:
             extra_triage_id = self.linked_room(intake_conn, TRIAGE_LINK_LABEL)
             if not extra_triage_id:
                 sys.exit("#%s has no Switch room link labelled %r, so Intake cannot serve target %s."
-                         % (target.intake_room, TRIAGE_LINK_LABEL, target.key))
+                         % (intake_name, TRIAGE_LINK_LABEL, target.key))
+            if target.key in (self.state.get("target_rooms") or {}) and self.agent.room_id(triage_name) != extra_triage_id:
+                sys.exit("#%s links to an unexpected triage room; expected #%s" % (intake_name, triage_name))
             triage_conn = self.agent.connect(extra_triage_id, functools.partial(self.on_triage_event, target=target),
                                              cursors=self.cursors, failed_log=self.failed_log)
             if not triage_conn.ready.wait(20):
                 sys.exit("Could not open the event stream for room %s" % extra_triage_id)
             self.pairs[target.key] = (intake_conn, triage_conn)
-            log.info("Also serving target %s in #%s and its linked triage room", target.key, target.intake_room)
+            log.info("Also serving target %s in #%s and its linked triage room", target.key, intake_name)
 
     # -- #proveit-intake -----------------------------------------------------
     def on_intake_event(self, conn, kind, frame, target=None):
@@ -876,6 +895,7 @@ def cmd_run(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="python -m proveit.intake", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--trial", help="use only this trial's isolated names, credentials, tickets and private files")
     sub = parser.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("setup", help="register the Intake agent with a Switch server")
     p.add_argument("--env-file", help="the server's .env (default: find Switch Console's local server)")
@@ -900,6 +920,13 @@ def main(argv=None):
                         "when no Reproducer agent is in the room). Not part of the demo flow.")
     p.set_defaults(fn=cmd_run)
     args = parser.parse_args(argv)
+    if args.trial:
+        from .trial import activate
+        global STATE_FILE
+        try:
+            STATE_FILE = Path(activate(args.trial)["state_file"])
+        except ValueError as exc:
+            parser.error(str(exc))
     args.fn(args)
 
 

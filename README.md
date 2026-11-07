@@ -161,11 +161,11 @@ The sandbox image is `python:3.9-slim`, pinned by digest. Python 3.9 is end of l
 ```sh
 git clone https://github.com/akhilll0305/team-pikachu-switch-ai && cd team-pikachu-switch-ai
 python -m proveit build                      # builds proveit-target:vulnerable and :patched (needs network once)
-python -m unittest discover -s tests -v      # 306 tests; duration varies by host; Docker must be running
+python -m unittest discover -s tests -v      # 318 tests; duration varies by host; Docker must be running
 python scripts/rehearse.py --twice           # replays all four PyYAML reports twice and compares
 ```
 
-Expected on Windows 11 (2026-11-07): `Ran 306 tests ... OK (skipped=12)` when the sqlparse images are built (`python -m proveit build --target sqlparse`), or `skipped=14` without them — the two sqlparse reproduce/not-reproduce tests skip when their images are absent and never build one. 11 of the base skips need macOS or Linux (the harness's own classification tests, POSIX file permissions, Codex's sandbox profile) and say so; the 12th is the OSV schema test, which needs the optional `jsonschema` package. If Docker is not running, the sandbox tests are skipped as well and the skip count goes up; that is not a pass. The tests in `tests/test_agent_rules.py` check the Skeptic's Codex rules and skip when the Codex CLI is not installed (as on CI); that skip is expected. The optional schema check also passed separately in an isolated environment with jsonschema 4.26.0. The recorded fix-pass results are in [the verification log](docs/evidence/fix-pass-2026-11-07-windows.log). A shallow clone can additionally skip the Git baseline comparison if `c78f1ff` is unavailable; the pinned hash guard still runs. The rehearsal ends with:
+Expected on Windows 11 (2026-11-07): `Ran 318 tests ... OK (skipped=12)` when the sqlparse images are built (`python -m proveit build --target sqlparse`), or `skipped=14` without them — the two sqlparse reproduce/not-reproduce tests skip when their images are absent and never build one. 11 of the base skips need macOS or Linux (the harness's own classification tests, POSIX file permissions, Codex's sandbox profile) and say so; the 12th is the OSV schema test, which needs the optional `jsonschema` package. If Docker is not running, the sandbox tests are skipped as well and the skip count goes up; that is not a pass. The tests in `tests/test_agent_rules.py` check the Skeptic's Codex rules and skip when the Codex CLI is not installed (as on CI); that skip is expected. The latest full run included jsonschema 4.26.0: 318 tests OK (skipped=11), including the OSV schema check ([trial preparation log](docs/evidence/trial-isolation-2026-11-07-windows.log)). The recorded fix-pass results are in [the verification log](docs/evidence/fix-pass-2026-11-07-windows.log). A shallow clone can additionally skip the Git baseline comparison if `c78f1ff` is unavailable; the pinned hash guard still runs. The rehearsal ends with:
 
 ```
 **Tally:** 4 reports. By status: 2 closed, 1 escalated, 1 quarantined. By outcome: 1 CODE_EXECUTION, 2 NOT_REPRODUCED, 1 not run. ...
@@ -197,6 +197,8 @@ python scripts/replay.py report 01    # post a replay as your Mattermost user
 ```
 
 The manual GUI steps are: start the server in Console, sign in Claude Code and Codex, deploy the template, trust the two agent folders, and configure Switch Trust (sign-up, policy, API key; optional, since Intake's quarantine still works without it).
+
+Isolated second-branch live trials: [setup and rollback](docs/TRIAL.md). Trial preparation is verified offline; its live agent behavior still needs verification.
 
 ## Commands
 

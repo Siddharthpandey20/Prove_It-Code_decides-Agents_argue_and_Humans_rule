@@ -32,6 +32,7 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 
 from . import actions, evidence, judge, reasons, reports, sandbox, screen, states, store, targets
 from .config import ENTRY_POINTS, TARGET
@@ -179,6 +180,13 @@ def cmd_export(args):
 
 
 def cmd_doctor(args):
+    if args.trial:
+        from .trial import activate
+        from . import intake
+        try:
+            intake.STATE_FILE = Path(activate(args.trial)["state_file"])
+        except ValueError as exc:
+            sys.exit(str(exc))
     from . import doctor
     report = doctor.run(live=not args.offline)
     if report.failed:
@@ -237,6 +245,7 @@ def main(argv=None):
     p = sub.add_parser("export"); p.add_argument("ticket", nargs="?"); p.add_argument("--out")
     p.add_argument("--verify", metavar="DIR"); p.set_defaults(fn=cmd_export)
     p = sub.add_parser("doctor", help="check this machine is ready for the demo")
+    p.add_argument("--trial", help="check only this trial's isolated configuration")
     p.add_argument("--offline", action="store_true", help="skip the checks that need the Switch server")
     p.set_defaults(fn=cmd_doctor)
     args = parser.parse_args(argv)

@@ -1,0 +1,47 @@
+{
+  "events": [
+    {
+      "at": "2026-11-07T15:31:10Z",
+      "detail": "report received by Intake",
+      "event": "received"
+    },
+    {
+      "at": "2026-11-07T15:32:36Z",
+      "detail": "payload sha256 5bbd4e474a2414a50ec1ef79c6a82d1d0207ff1e1aa31a27bca6171c325097d0",
+      "event": "proof accepted"
+    },
+    {
+      "at": "2026-11-07T15:34:35Z",
+      "detail": "RESOURCE_EXHAUSTION on sqlparse 0.4.3, 3/3 clean runs, image sha256:223e1f6d958078a4f520c31a86bc11c91654fc1226faedfa03067ec92b919bf0",
+      "event": "check (vulnerable build)"
+    },
+    {
+      "at": "2026-11-07T15:35:57Z",
+      "detail": "dispute (patched_not_checked)",
+      "event": "Skeptic verdict"
+    },
+    {
+      "at": "2026-11-07T15:36:22Z",
+      "detail": "made on earlier evidence",
+      "event": "skeptic stale"
+    },
+    {
+      "at": "2026-11-07T15:36:22Z",
+      "detail": "NOT_REPRODUCED on sqlparse 0.4.4, 3/3 clean runs, image sha256:e597bc2dcbc4cfa15ef5d02609a71a3b8368f4db68fb89556a959a5e282e882e",
+      "event": "check (patched build)"
+    },
+    {
+      "at": "2026-11-07T15:40:00Z",
+      "detail": "cleared dispute:patched_not_checked",
+      "event": "maintainer override"
+    },
+    {
+      "at": "2026-11-07T15:40:19Z",
+      "detail": "escalate",
+      "event": "maintainer decision"
+    }
+  ],
+  "missing": [],
+  "status": "DRAFT, needs maintainer review",
+  "ticket": "R-004"
+}

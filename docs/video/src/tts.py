@@ -1,4 +1,4 @@
-﻿import asyncio, re, subprocess, sys, json, os
+import asyncio, re, subprocess, sys, json, os
 from pathlib import Path
 import edge_tts, imageio_ffmpeg
 
@@ -29,7 +29,7 @@ async def main():
             try:
                 sents = []
                 with open(tmp, "wb") as f:
-                    async for ch in edge_tts.Communicate(t, VOICE, rate="+8%", boundary="SentenceBoundary").stream():
+                    async for ch in edge_tts.Communicate(t, VOICE, rate="+28%", boundary="SentenceBoundary").stream():
                         if ch["type"] == "audio":
                             f.write(ch["data"])
                         elif ch["type"] == "SentenceBoundary":

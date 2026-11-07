@@ -32,6 +32,12 @@ def sw(step):
              ("Managed agents", "Claude Code + Codex"), ("One template", "rooms, agents, docs, link"), ("Sender attribution", "only maintainers decide")]
     return '<div class="grid g6">' + "".join(f'<div class="{"on" if k <= step else "off"}">{a}<br><small>{b}</small></div>' for k, (a, b) in enumerate(items)) + '</div>'
 
+
+def tiles(step):
+    T = [("3", "fresh containers per build"), ("6", "sandbox runs per verdict"), ("> 10 s → 0.066 s", "sqlparse 0.4.3 vs 0.4.4, same 44-byte payload"),
+         ("4", "draft files per escalation"), ("314", "tests passed · 0 failures")]
+    return '<div class="tiles">' + "".join(f'<div class="tile {"on" if k <= step else "off"}{" pop" if k == step else ""}"><div class="tn">{a}</div><div class="tl">{b}</div></div>' for k, (a, b) in enumerate(T)) + '</div><div class="fine">From the review4 live trial, 2026-11-07, and the full test suite at 7568a4e</div>'
+
 VIS = {
  1: [card('<div class="big">You maintain an open-source library.</div>'), card(flood(3)), card(flood(6)),
      card(flood(6) + '<div class="big" style="margin-top:20px">Up to <b>an hour</b> each to disprove.</div><div class="fine">30–60 min per report: Elastic Security Labs, 2026-08-04</div>')],
@@ -62,13 +68,20 @@ VIS = {
      card('<div class="big">Without Switch:</div><div class="list"><div>no shared room for reporter, agents and maintainer</div><div>no linked rooms, no managed agents, no sender identity</div></div><div class="fine">The CLI and the offline rehearsal still run without Switch; the team workflow does not.</div>'),
      card('<div class="grid g3"><div class="on">Switch<br><small>chat, agents, shared room context</small></div><div class="on">Prove It<br><small>ticket states, reporter limits, maintainer decisions</small></div><div class="off">Docker + harness<br><small>runs and classifies the proof</small></div></div>'),
      card('<div class="grid g3"><div class="on">Switch<br><small>chat, agents, shared room context</small></div><div class="on">Prove It<br><small>ticket states, reporter limits, maintainer decisions</small></div><div class="on">Docker + harness<br><small>runs and classifies the proof</small></div></div>')],
- 7: [card('<div class="num"><b>3</b> fresh containers per build</div><div class="numl">6 sandbox runs per vulnerable/patched comparison · an evidence pack · a human decision<br><small>Sandbox time is not workflow time. Agent cost was not recorded. No time-saved figure is claimed.</small></div>'),
-     card('<div class="num"><b>326</b> tests</div><div class="numl">314 passed · 12 skipped · 0 failures<br><small>full suite at commit 7568a4e (team run, 2026-11-07)</small></div>'),
-     card('<div class="sub">Any maintainer team can deploy the template.</div><div class="built">github.com/akhilll0305/team-pikachu-switch-ai</div>')],
+ 7: [card(tiles(0)), card(tiles(1)), card(tiles(2)), card(tiles(3)),
+     card(tiles(4)),
+     card('<div class="big">Built for any team that receives security reports</div><div class="grid g3"><div class="on">Library maintainers<br><small>PyYAML-style projects drowning in "critical" reports</small></div><div class="on">Bug bounty desks<br><small>triage before an engineer spends an hour</small></div><div class="on">Open-source security teams<br><small>evidence, timeline and draft advisory per ticket</small></div></div><div class="fine">Possible users, not current customers</div>'),
+     card('<div class="sub">Import the template: rooms, agents, room documents and the link, in one step.</div>' + TPL)],
  8: [card('<div class="title">Prove It</div>'), card('<div class="title">Prove It</div><div class="sub">Code decides. Agents argue. <b style="color:#f5b942">Humans rule.</b></div>'),
      card('<div class="title">Prove It</div><div class="sub">Code decides. Agents argue. <b style="color:#f5b942">Humans rule.</b></div><div class="built big2">Built on <b>Switch</b>, for Flip the Switch</div><div class="built">github.com/akhilll0305/team-pikachu-switch-ai</div>')],
 }
 CSS += """
+.tiles{display:flex;flex-wrap:wrap;gap:28px;justify-content:center;max-width:1760px}
+.tile{width:540px;background:#121a28;border:2px solid #27324a;border-top:6px solid #f5b942;border-radius:16px;padding:30px 20px}
+.tile.off{opacity:.18}.tile.pop{box-shadow:0 0 50px rgba(245,185,66,.35);border-color:#f5b942}
+.tn{font-size:80px;font-weight:800;color:#f5b942;line-height:1.1}.tl{font-size:28px;color:#d5dceb;margin-top:8px}
+.room{white-space:nowrap;font-size:30px}.src{white-space:nowrap;font-size:20px}.replay{white-space:nowrap;font-size:22px}
+
 .flood{position:relative;height:520px;width:1300px;margin:0 auto}
 .fl{position:absolute;left:150px;width:1000px;background:#151d2c;border:2px solid #3a2530;border-left:8px solid #ff6b5a;border-radius:12px;padding:18px 24px;font-size:30px;text-align:left;box-shadow:0 10px 30px rgba(0,0,0,.5)}
 .fl:nth-child(1){top:0}.fl:nth-child(2){top:80px}.fl:nth-child(3){top:160px}.fl:nth-child(4){top:240px}.fl:nth-child(5){top:320px}.fl:nth-child(6){top:400px}

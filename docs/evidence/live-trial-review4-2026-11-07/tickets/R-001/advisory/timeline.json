@@ -1,0 +1,47 @@
+{
+  "events": [
+    {
+      "at": "2026-11-07T14:40:18Z",
+      "detail": "report received by Intake",
+      "event": "received"
+    },
+    {
+      "at": "2026-11-07T14:40:18Z",
+      "detail": "payload sha256 75ce42a97f62f51b906ca79b2e94f7affd0eb6816850b3bfc5132ec65bfbda06",
+      "event": "proof accepted"
+    },
+    {
+      "at": "2026-11-07T15:04:39Z",
+      "detail": "CODE_EXECUTION on PyYAML 5.3.1, 3/3 clean runs, image sha256:d8219ba0f7880c198c55d6d99afbf332f9310f2256dd7493f39a3a654b5725b6",
+      "event": "check (vulnerable build)"
+    },
+    {
+      "at": "2026-11-07T15:05:39Z",
+      "detail": "dispute (patched_not_checked)",
+      "event": "Skeptic verdict"
+    },
+    {
+      "at": "2026-11-07T15:08:04Z",
+      "detail": "made on earlier evidence",
+      "event": "skeptic stale"
+    },
+    {
+      "at": "2026-11-07T15:08:04Z",
+      "detail": "NOT_REPRODUCED on PyYAML 5.4, 3/3 clean runs, image sha256:00125fc0958b8f2a6c763fba02aff1c8dc87f9fbd9f6cd1cab567ae6a3a32ec3",
+      "event": "check (patched build)"
+    },
+    {
+      "at": "2026-11-07T15:14:02Z",
+      "detail": "cleared dispute:patched_not_checked",
+      "event": "maintainer override"
+    },
+    {
+      "at": "2026-11-07T15:15:04Z",
+      "detail": "escalate",
+      "event": "maintainer decision"
+    }
+  ],
+  "missing": [],
+  "status": "DRAFT, needs maintainer review",
+  "ticket": "R-001"
+}

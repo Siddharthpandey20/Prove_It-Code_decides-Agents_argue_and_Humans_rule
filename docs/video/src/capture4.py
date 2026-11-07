@@ -1,4 +1,4 @@
-﻿"""Screenshot real run-2 posts from the local Mattermost (login never printed)."""
+"""Screenshot real run-2 posts from the local Mattermost (login never printed)."""
 import json, sys, time
 from pathlib import Path
 sys.path.insert(0, r"D:\PROJECTS\Switch-the-flip\team-pikachu-switch-ai")
@@ -26,7 +26,7 @@ POSTS = {
 HIDE = """
 .team-sidebar, #SidebarContainer, #sidebar-left, .app-bar, #global-header, .global-header,
 #announcement-bar, .announcement-bar, #channel_view .post-create__container, #advancedTextEditorCell,
-.channel-header__icons, #channelHeaderSearchWrapper, .AnnouncementBar { display: none !important; }
+.channel-header__icons, #channelHeaderSearchWrapper, .AnnouncementBar, .toast, .toast__visible, .toast__jump, .scroll-to-bottom-toast, [class*="toast"], [id*="toast"] { display: none !important; }
 .app__body .channel-view, .main-wrapper, #channel_view { margin-left: 0 !important; }
 """
 only = set(sys.argv[1:])

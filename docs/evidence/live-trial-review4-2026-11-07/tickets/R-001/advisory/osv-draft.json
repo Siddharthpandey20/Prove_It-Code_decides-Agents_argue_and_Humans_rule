@@ -1,0 +1,31 @@
+{
+  "affected": [
+    {
+      "package": {
+        "ecosystem": "PyPI",
+        "name": "PyYAML"
+      },
+      "versions": [
+        "5.3.1"
+      ]
+    }
+  ],
+  "database_specific": {
+    "generated_by": "Prove It",
+    "not_reproduced_on": [
+      "5.4"
+    ],
+    "prove_it_ticket": "R-001",
+    "reported_affected_version": "before 5.4",
+    "status": "DRAFT, needs maintainer review",
+    "tested": {
+      "patched": "5.4: NOT_REPRODUCED, 3/3 clean runs",
+      "vulnerable": "5.3.1: CODE_EXECUTION, 3/3 clean runs"
+    }
+  },
+  "details": "Claim code_execution; entry point full_load; vulnerable build PyYAML 5.3.1: CODE_EXECUTION, 3/3 clean runs; patched build 5.4: NOT_REPRODUCED, 3/3 clean runs.",
+  "id": "x_DRAFT-PROVEIT-R-001",
+  "modified": "2026-11-07T15:15:04Z",
+  "schema_version": "1.9.2",
+  "summary": "DRAFT: code execution in PyYAML via full_load (Prove It R-001)"
+}

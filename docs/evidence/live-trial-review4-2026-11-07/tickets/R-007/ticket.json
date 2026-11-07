@@ -1,0 +1,108 @@
+{
+  "affected_version": "0.4.3",
+  "claim": "denial_of_service",
+  "counted_invalid": true,
+  "created_at": "2026-11-07T15:57:37Z",
+  "decision_by": "user",
+  "decision_effects_pending": false,
+  "decision_note": "Synthetic reporter-limit test; it did not reproduce.",
+  "decision_question": "not_reproduced",
+  "decision_request_id": "sw_22fb3f8164b54aa643735645ff3a71bd",
+  "entry_point": "parse",
+  "id": "R-007",
+  "intake_delivery": {
+    "reporter": true,
+    "status": "in_triage",
+    "triage": true
+  },
+  "last_intake_message": "sw_fcaf008a379f2dcf3935da06ec8a268c",
+  "missing": [],
+  "notified": true,
+  "out_of_scope_entry": "",
+  "payload_bytes": 10,
+  "payload_sha256": "a41109d24069b4822ddc5f367b25d484dc7e839bff338ce7a3e5da641caacda0",
+  "poc_problem": "",
+  "runs": [
+    {
+      "actor": "agent",
+      "agreeing": 3,
+      "at": "2026-11-07T15:58:38Z",
+      "build": "vulnerable",
+      "by": "reproducer",
+      "container_runs": 3,
+      "entry_point": "parse",
+      "file": "work/R-007/runs/01-vulnerable.json",
+      "image_id": "sha256:223e1f6d958078a4f520c31a86bc11c91654fc1226faedfa03067ec92b919bf0",
+      "outcome": "NOT_REPRODUCED",
+      "seconds": 0.199
+    }
+  ],
+  "severity": "low",
+  "skeptic": {
+    "actor": "agent",
+    "at": "2026-11-07T15:59:10Z",
+    "by": "review4-prove-it-skeptic",
+    "evidence": {
+      "patched": null,
+      "vulnerable": "work/R-007/runs/01-vulnerable.json"
+    },
+    "verdict": "concur"
+  },
+  "source": "switch",
+  "status": "closed",
+  "tags": [],
+  "target": "sqlparse",
+  "tested_version": "0.4.3",
+  "timeline": [
+    {
+      "actor": "intake",
+      "at": "2026-11-07T15:57:37Z",
+      "by": "intake",
+      "from": "new",
+      "to": "in_triage",
+      "what": "receive"
+    },
+    {
+      "actor": "agent",
+      "at": "2026-11-07T15:58:38Z",
+      "build": "vulnerable",
+      "by": "reproducer",
+      "from": "in_triage",
+      "outcome": "NOT_REPRODUCED",
+      "to": "not_reproduced",
+      "what": "check"
+    },
+    {
+      "actor": "agent",
+      "at": "2026-11-07T15:59:09Z",
+      "by": "review4-prove-it-skeptic",
+      "evidence": {
+        "patched": null,
+        "vulnerable": "work/R-007/runs/01-vulnerable.json"
+      },
+      "from": "not_reproduced",
+      "to": "not_reproduced",
+      "what": "concur"
+    },
+    {
+      "actor": "human",
+      "at": "2026-11-07T15:59:31Z",
+      "by": "user",
+      "from": "not_reproduced",
+      "note": "Synthetic reporter-limit test; it did not reproduce.",
+      "question": "not_reproduced",
+      "to": "closed",
+      "what": "close"
+    },
+    {
+      "at": "2026-11-07T15:59:32Z",
+      "by": "intake",
+      "what": "notified"
+    }
+  ],
+  "times": {
+    "decided": 1794067171.6338155,
+    "received": 1794067057.4002302,
+    "triaged": 1794067057.4040818
+  }
+}

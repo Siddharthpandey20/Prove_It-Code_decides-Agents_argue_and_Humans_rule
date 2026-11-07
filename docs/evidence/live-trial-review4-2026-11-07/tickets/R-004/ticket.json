@@ -1,0 +1,186 @@
+{
+  "advisory": "work/R-004/advisory/",
+  "affected_version": "0.4.3",
+  "claim": "denial_of_service",
+  "counted_good": true,
+  "created_at": "2026-11-07T15:31:10Z",
+  "decision_by": "user",
+  "decision_effects_pending": false,
+  "decision_note": "",
+  "decision_request_id": "sw_886d3b30284153d768fecaccc754a22e",
+  "disputes": [
+    {
+      "at": "2026-11-07T15:35:57Z",
+      "by": "review4-prove-it-skeptic",
+      "code": "patched_not_checked"
+    }
+  ],
+  "entry_point": "parse",
+  "id": "R-004",
+  "intake_delivery": {
+    "reporter": true,
+    "status": "in_triage",
+    "triage": true
+  },
+  "last_intake_message": "sw_12ecfc92282028810334cc70cc37f562",
+  "missing": [],
+  "notified": true,
+  "out_of_scope_entry": "",
+  "override": {
+    "after": "dispute",
+    "at": "2026-11-07T15:40:00Z",
+    "by": "user",
+    "cleared": [
+      "dispute:patched_not_checked"
+    ],
+    "evidence": {
+      "patched": "work/R-004/runs/02-patched.json",
+      "vulnerable": "work/R-004/runs/01-vulnerable.json"
+    },
+    "note": "The patched build was checked through the same parse entry point and did not reproduce in 3/3 runs. I reviewed the updated evidence and Skeptic review."
+  },
+  "payload_bytes": 44,
+  "payload_sha256": "5bbd4e474a2414a50ec1ef79c6a82d1d0207ff1e1aa31a27bca6171c325097d0",
+  "poc_problem": "",
+  "runs": [
+    {
+      "actor": "agent",
+      "agreeing": 3,
+      "at": "2026-11-07T15:34:35Z",
+      "build": "vulnerable",
+      "by": "reproducer",
+      "container_runs": 3,
+      "entry_point": "parse",
+      "file": "work/R-004/runs/01-vulnerable.json",
+      "image_id": "sha256:223e1f6d958078a4f520c31a86bc11c91654fc1226faedfa03067ec92b919bf0",
+      "outcome": "RESOURCE_EXHAUSTION",
+      "seconds": 30.012
+    },
+    {
+      "actor": "agent",
+      "agreeing": 3,
+      "at": "2026-11-07T15:36:22Z",
+      "build": "patched",
+      "by": "reproducer",
+      "container_runs": 3,
+      "entry_point": "parse",
+      "file": "work/R-004/runs/02-patched.json",
+      "image_id": "sha256:e597bc2dcbc4cfa15ef5d02609a71a3b8368f4db68fb89556a959a5e282e882e",
+      "outcome": "NOT_REPRODUCED",
+      "seconds": 0.166
+    }
+  ],
+  "severity": "unrated",
+  "skeptic": {
+    "actor": "agent",
+    "at": "2026-11-07T15:35:57Z",
+    "by": "review4-prove-it-skeptic",
+    "code": "patched_not_checked",
+    "evidence": {
+      "patched": null,
+      "vulnerable": "work/R-004/runs/01-vulnerable.json"
+    },
+    "note": "patched build not checked; request Reproducer check it.",
+    "overridden": true,
+    "reason": "the patched build has not been checked",
+    "stale": true,
+    "verdict": "dispute"
+  },
+  "source": "switch",
+  "status": "escalated",
+  "tags": [],
+  "target": "sqlparse",
+  "tested_version": "0.4.3",
+  "timeline": [
+    {
+      "actor": "intake",
+      "at": "2026-11-07T15:31:10Z",
+      "by": "intake",
+      "from": "new",
+      "to": "awaiting_poc",
+      "what": "receive"
+    },
+    {
+      "actor": "intake",
+      "at": "2026-11-07T15:32:36Z",
+      "by": "intake",
+      "from": "awaiting_poc",
+      "to": "in_triage",
+      "what": "followup"
+    },
+    {
+      "actor": "agent",
+      "at": "2026-11-07T15:34:35Z",
+      "build": "vulnerable",
+      "by": "reproducer",
+      "from": "in_triage",
+      "outcome": "RESOURCE_EXHAUSTION",
+      "to": "reproduced",
+      "what": "check"
+    },
+    {
+      "actor": "agent",
+      "at": "2026-11-07T15:35:57Z",
+      "by": "review4-prove-it-skeptic",
+      "code": "patched_not_checked",
+      "evidence": {
+        "patched": null,
+        "vulnerable": "work/R-004/runs/01-vulnerable.json"
+      },
+      "from": "reproduced",
+      "to": "disputed",
+      "what": "dispute"
+    },
+    {
+      "at": "2026-11-07T15:36:22Z",
+      "by": "reproducer",
+      "run": "work/R-004/runs/02-patched.json",
+      "what": "skeptic_stale"
+    },
+    {
+      "actor": "agent",
+      "at": "2026-11-07T15:36:22Z",
+      "build": "patched",
+      "by": "reproducer",
+      "from": "disputed",
+      "outcome": "NOT_REPRODUCED",
+      "to": "disputed",
+      "what": "check_patched"
+    },
+    {
+      "actor": "human",
+      "at": "2026-11-07T15:40:00Z",
+      "by": "user",
+      "cleared": [
+        "dispute:patched_not_checked"
+      ],
+      "evidence": {
+        "patched": "work/R-004/runs/02-patched.json",
+        "vulnerable": "work/R-004/runs/01-vulnerable.json"
+      },
+      "from": "disputed",
+      "note": "The patched build was checked through the same parse entry point and did not reproduce in 3/3 runs. I reviewed the updated evidence and Skeptic review.",
+      "to": "reproduced",
+      "what": "override"
+    },
+    {
+      "actor": "human",
+      "at": "2026-11-07T15:40:19Z",
+      "by": "user",
+      "from": "reproduced",
+      "note": "",
+      "to": "escalated",
+      "what": "escalate"
+    },
+    {
+      "at": "2026-11-07T15:40:20Z",
+      "by": "intake",
+      "what": "notified"
+    }
+  ],
+  "times": {
+    "decided": 1794066019.2802932,
+    "received": 1794065470.8830712,
+    "triaged": 1794065556.6658819
+  }
+}

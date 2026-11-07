@@ -1,0 +1,959 @@
+{
+  "agreeing": 3,
+  "build": "vulnerable",
+  "child_report_received": true,
+  "container_exit_code": 0,
+  "container_timed_out": false,
+  "cpu_seconds": 0.052,
+  "dropped_values": 0,
+  "entry_point": "full_load",
+  "events": [
+    {
+      "event": "compile",
+      "in_library": true,
+      "library_frames": [
+        "constructor.py:make_python_instance",
+        "constructor.py:construct_python_object_apply",
+        "constructor.py:construct_python_object_new",
+        "constructor.py:construct_object",
+        "constructor.py:construct_document",
+        "constructor.py:get_single_data"
+      ]
+    },
+    {
+      "event": "exec",
+      "in_library": true,
+      "library_frames": [
+        "constructor.py:make_python_instance",
+        "constructor.py:construct_python_object_apply",
+        "constructor.py:construct_python_object_new",
+        "constructor.py:construct_object",
+        "constructor.py:construct_document",
+        "constructor.py:get_single_data"
+      ]
+    },
+    {
+      "event": "exec",
+      "in_library": true,
+      "library_frames": [
+        "constructor.py:make_python_instance",
+        "constructor.py:construct_python_object_apply",
+        "constructor.py:construct_python_object_new",
+        "constructor.py:construct_object",
+        "constructor.py:construct_document",
+        "constructor.py:get_single_data"
+      ]
+    },
+    {
+      "event": "exec",
+      "in_library": true,
+      "library_frames": [
+        "constructor.py:make_python_instance",
+        "constructor.py:construct_python_object_apply",
+        "constructor.py:construct_python_object_new",
+        "constructor.py:construct_object",
+        "constructor.py:construct_document",
+        "constructor.py:get_single_data"
+      ]
+    },
+    {
+      "event": "exec",
+      "in_library": true,
+      "library_frames": [
+        "constructor.py:make_python_instance",
+        "constructor.py:construct_python_object_apply",
+        "constructor.py:construct_python_object_new",
+        "constructor.py:construct_object",
+        "constructor.py:construct_document",
+        "constructor.py:get_single_data"
+      ]
+    },
+    {
+      "event": "exec",
+      "in_library": true,
+      "library_frames": [
+        "constructor.py:make_python_instance",
+        "constructor.py:construct_python_object_apply",
+        "constructor.py:construct_python_object_new",
+        "constructor.py:construct_object",
+        "constructor.py:construct_document",
+        "constructor.py:get_single_data"
+      ]
+    },
+    {
+      "event": "exec",
+      "in_library": true,
+      "library_frames": [
+        "constructor.py:make_python_instance",
+        "constructor.py:construct_python_object_apply",
+        "constructor.py:construct_python_object_new",
+        "constructor.py:construct_object",
+        "constructor.py:construct_document",
+        "constructor.py:get_single_data"
+      ]
+    },
+    {
+      "event": "exec",
+      "in_library": true,
+      "library_frames": [
+        "constructor.py:make_python_instance",
+        "constructor.py:construct_python_object_apply",
+        "constructor.py:construct_python_object_new",
+        "constructor.py:construct_object",
+        "constructor.py:construct_document",
+        "constructor.py:get_single_data"
+      ]
+    },
+    {
+      "event": "exec",
+      "in_library": true,
+      "library_frames": [
+        "constructor.py:make_python_instance",
+        "constructor.py:construct_python_object_apply",
+        "constructor.py:construct_python_object_new",
+        "constructor.py:construct_object",
+        "constructor.py:construct_document",
+        "constructor.py:get_single_data"
+      ]
+    },
+    {
+      "event": "compile",
+      "in_library": true,
+      "library_frames": [
+        "constructor.py:make_python_instance",
+        "constructor.py:construct_python_object_apply",
+        "constructor.py:construct_python_object_new",
+        "constructor.py:construct_object",
+        "constructor.py:construct_document",
+        "constructor.py:get_single_data"
+      ]
+    },
+    {
+      "event": "exec",
+      "in_library": true,
+      "library_frames": [
+        "constructor.py:make_python_instance",
+        "constructor.py:construct_python_object_apply",
+        "constructor.py:construct_python_object_new",
+        "constructor.py:construct_object",
+        "constructor.py:construct_document",
+        "constructor.py:get_single_data"
+      ]
+    },
+    {
+      "event": "compile",
+      "in_library": true,
+      "library_frames": [
+        "constructor.py:make_python_instance",
+        "constructor.py:construct_python_object_apply",
+        "constructor.py:construct_python_object_new",
+        "constructor.py:construct_object",
+        "constructor.py:construct_document",
+        "constructor.py:get_single_data"
+      ]
+    },
+    {
+      "event": "exec",
+      "in_library": true,
+      "library_frames": [
+        "constructor.py:make_python_instance",
+        "constructor.py:construct_python_object_apply",
+        "constructor.py:construct_python_object_new",
+        "constructor.py:construct_object",
+        "constructor.py:construct_document",
+        "constructor.py:get_single_data"
+      ]
+    },
+    {
+      "event": "compile",
+      "in_library": true,
+      "library_frames": [
+        "constructor.py:make_python_instance",
+        "constructor.py:construct_python_object_apply",
+        "constructor.py:construct_python_object_new",
+        "constructor.py:construct_object",
+        "constructor.py:construct_document",
+        "constructor.py:get_single_data"
+      ]
+    },
+    {
+      "event": "exec",
+      "in_library": true,
+      "library_frames": [
+        "constructor.py:make_python_instance",
+        "constructor.py:construct_python_object_apply",
+        "constructor.py:construct_python_object_new",
+        "constructor.py:construct_object",
+        "constructor.py:construct_document",
+        "constructor.py:get_single_data"
+      ]
+    },
+    {
+      "event": "write-marker",
+      "in_library": true,
+      "library_frames": [
+        "constructor.py:make_python_instance",
+        "constructor.py:construct_python_object_apply",
+        "constructor.py:construct_python_object_new",
+        "constructor.py:construct_object",
+        "constructor.py:construct_document",
+        "constructor.py:get_single_data"
+      ]
+    },
+    {
+      "event": "write-marker",
+      "in_library": true,
+      "library_frames": [
+        "constructor.py:make_python_instance",
+        "constructor.py:construct_python_object_apply",
+        "constructor.py:construct_python_object_new",
+        "constructor.py:construct_object",
+        "constructor.py:construct_document",
+        "constructor.py:get_single_data"
+      ]
+    }
+  ],
+  "exception_frames": [],
+  "exception_sha256": null,
+  "exception_type": null,
+  "exit_code": 0,
+  "image": "proveit-target:vulnerable",
+  "image_id": "sha256:d8219ba0f7880c198c55d6d99afbf332f9310f2256dd7493f39a3a654b5725b6",
+  "library": "yaml",
+  "library_version": "5.3.1",
+  "marker_created": true,
+  "outcome": "CODE_EXECUTION",
+  "payload_bytes": 171,
+  "payload_sha256": "75ce42a97f62f51b906ca79b2e94f7affd0eb6816850b3bfc5132ec65bfbda06",
+  "peak_rss_mb": 14.8,
+  "ran": true,
+  "reproducing": 3,
+  "runs": 3,
+  "runs_detail": [
+    {
+      "build": "vulnerable",
+      "child_report_received": true,
+      "container": "proveit-run-efba527c12e3",
+      "container_exit_code": 0,
+      "container_timed_out": false,
+      "cpu_seconds": 0.052,
+      "dropped_values": 0,
+      "entry_point": "full_load",
+      "events": [
+        {
+          "event": "compile",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "compile",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "compile",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "compile",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "write-marker",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "write-marker",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        }
+      ],
+      "exception_frames": [],
+      "exception_sha256": null,
+      "exception_type": null,
+      "exit_code": 0,
+      "image": "proveit-target:vulnerable",
+      "image_id": "sha256:d8219ba0f7880c198c55d6d99afbf332f9310f2256dd7493f39a3a654b5725b6",
+      "library": "yaml",
+      "library_version": "5.3.1",
+      "marker_created": true,
+      "outcome": "CODE_EXECUTION",
+      "payload_bytes": 171,
+      "payload_sha256": "75ce42a97f62f51b906ca79b2e94f7affd0eb6816850b3bfc5132ec65bfbda06",
+      "peak_rss_mb": 14.8,
+      "ran": true,
+      "run": 1,
+      "seconds": 0.066,
+      "signal": null,
+      "target": "pyyaml",
+      "target_name": "PyYAML",
+      "target_version": "5.3.1",
+      "timed_out": false,
+      "why": "the marker file appeared, so the library ran the payload as code"
+    },
+    {
+      "build": "vulnerable",
+      "child_report_received": true,
+      "container": "proveit-run-b1fe6c17d22c",
+      "container_exit_code": 0,
+      "container_timed_out": false,
+      "cpu_seconds": 0.04,
+      "dropped_values": 0,
+      "entry_point": "full_load",
+      "events": [
+        {
+          "event": "compile",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "compile",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "compile",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "compile",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "write-marker",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "write-marker",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        }
+      ],
+      "exception_frames": [],
+      "exception_sha256": null,
+      "exception_type": null,
+      "exit_code": 0,
+      "image": "proveit-target:vulnerable",
+      "image_id": "sha256:d8219ba0f7880c198c55d6d99afbf332f9310f2256dd7493f39a3a654b5725b6",
+      "library": "yaml",
+      "library_version": "5.3.1",
+      "marker_created": true,
+      "outcome": "CODE_EXECUTION",
+      "payload_bytes": 171,
+      "payload_sha256": "75ce42a97f62f51b906ca79b2e94f7affd0eb6816850b3bfc5132ec65bfbda06",
+      "peak_rss_mb": 14.8,
+      "ran": true,
+      "run": 2,
+      "seconds": 0.067,
+      "signal": null,
+      "target": "pyyaml",
+      "target_name": "PyYAML",
+      "target_version": "5.3.1",
+      "timed_out": false,
+      "why": "the marker file appeared, so the library ran the payload as code"
+    },
+    {
+      "build": "vulnerable",
+      "child_report_received": true,
+      "container": "proveit-run-205578ce943d",
+      "container_exit_code": 0,
+      "container_timed_out": false,
+      "cpu_seconds": 0.046,
+      "dropped_values": 0,
+      "entry_point": "full_load",
+      "events": [
+        {
+          "event": "compile",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "compile",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "compile",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "compile",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "exec",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "write-marker",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        },
+        {
+          "event": "write-marker",
+          "in_library": true,
+          "library_frames": [
+            "constructor.py:make_python_instance",
+            "constructor.py:construct_python_object_apply",
+            "constructor.py:construct_python_object_new",
+            "constructor.py:construct_object",
+            "constructor.py:construct_document",
+            "constructor.py:get_single_data"
+          ]
+        }
+      ],
+      "exception_frames": [],
+      "exception_sha256": null,
+      "exception_type": null,
+      "exit_code": 0,
+      "image": "proveit-target:vulnerable",
+      "image_id": "sha256:d8219ba0f7880c198c55d6d99afbf332f9310f2256dd7493f39a3a654b5725b6",
+      "library": "yaml",
+      "library_version": "5.3.1",
+      "marker_created": true,
+      "outcome": "CODE_EXECUTION",
+      "payload_bytes": 171,
+      "payload_sha256": "75ce42a97f62f51b906ca79b2e94f7affd0eb6816850b3bfc5132ec65bfbda06",
+      "peak_rss_mb": 14.8,
+      "ran": true,
+      "run": 3,
+      "seconds": 0.067,
+      "signal": null,
+      "target": "pyyaml",
+      "target_name": "PyYAML",
+      "target_version": "5.3.1",
+      "timed_out": false,
+      "why": "the marker file appeared, so the library ran the payload as code"
+    }
+  ],
+  "seconds": 0.066,
+  "signal": null,
+  "split": {
+    "CODE_EXECUTION": 3
+  },
+  "target": "pyyaml",
+  "target_name": "PyYAML",
+  "target_version": "5.3.1",
+  "timed_out": false,
+  "total_seconds": 0.2,
+  "why": "the marker file appeared, so the library ran the payload as code"
+}

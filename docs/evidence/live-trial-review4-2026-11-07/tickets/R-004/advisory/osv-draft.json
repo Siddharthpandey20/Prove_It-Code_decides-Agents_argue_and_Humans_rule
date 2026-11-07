@@ -1,0 +1,31 @@
+{
+  "affected": [
+    {
+      "package": {
+        "ecosystem": "PyPI",
+        "name": "sqlparse"
+      },
+      "versions": [
+        "0.4.3"
+      ]
+    }
+  ],
+  "database_specific": {
+    "generated_by": "Prove It",
+    "not_reproduced_on": [
+      "0.4.4"
+    ],
+    "prove_it_ticket": "R-004",
+    "reported_affected_version": "0.4.3",
+    "status": "DRAFT, needs maintainer review",
+    "tested": {
+      "patched": "0.4.4: NOT_REPRODUCED, 3/3 clean runs",
+      "vulnerable": "0.4.3: RESOURCE_EXHAUSTION, 3/3 clean runs"
+    }
+  },
+  "details": "Claim denial_of_service; entry point parse; vulnerable build sqlparse 0.4.3: RESOURCE_EXHAUSTION, 3/3 clean runs; patched build 0.4.4: NOT_REPRODUCED, 3/3 clean runs.",
+  "id": "x_DRAFT-PROVEIT-R-004",
+  "modified": "2026-11-07T15:40:19Z",
+  "schema_version": "1.9.2",
+  "summary": "DRAFT: denial of service in sqlparse via parse (Prove It R-004)"
+}

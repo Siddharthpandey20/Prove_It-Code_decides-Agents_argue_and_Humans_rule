@@ -29,6 +29,6 @@ fc.append("[mu][vk]sidechaincompress=threshold=0.03:ratio=6:attack=20:release=35
 fc.append(f"[{si}:a]aresample=48000,volume=0.45[sx]")
 fc.append(f"[vo][md][sx]amix=inputs=3:normalize=0,atrim=0:{total:.3f},loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000[a]")
 args += ["-filter_complex", ";".join(fc), "-map", f"[{prev}]", "-map", "[a]", "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-         "-pix_fmt", "yuv420p", "-c:a", "aac", "-ac", "2", "-b:a", "192k", "-t", f"{total:.3f}", "-movflags", "+faststart", str(OUT / "prove-it-demo-v2.mp4")]
+         "-pix_fmt", "yuv420p", "-c:a", "aac", "-ac", "2", "-b:a", "192k", "-t", f"{total:.3f}", "-movflags", "+faststart", str(OUT / "prove-it-demo-v3.mp4")]
 r = subprocess.run(args, capture_output=True, text=True)
 print(r.returncode, r.stderr[-2500:])

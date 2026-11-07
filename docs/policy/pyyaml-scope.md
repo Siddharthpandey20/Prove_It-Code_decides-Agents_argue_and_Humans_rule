@@ -1,6 +1,6 @@
 # PyYAML scope policy
 
-> **Role:** What Prove It treats as a PyYAML vulnerability, and what it rejects as out of scope. Intake enforces this before any sandbox run (decision D-015 in [context.md](../../context.md#key-decisions)); the Skeptic uses the `out_of_scope_api` reason code for anything that slips past.
+> **Role:** What Prove It treats as a PyYAML vulnerability, and what it rejects as out of scope. Intake enforces this before any sandbox run; the Skeptic uses the `out_of_scope_api` reason code for anything that slips past.
 
 ## Threat model
 

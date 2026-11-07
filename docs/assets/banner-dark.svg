@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320" role="img" aria-label="Prove It: Make the AI prove it before a human reads it. Built on Switch.">
+  <rect width="1280" height="320" fill="#0d1117"/>
+  <rect x="0" y="0" width="1280" height="6" fill="#3fb950"/>
+  <g transform="translate(96,96)">
+    <rect x="0" y="0" width="112" height="112" rx="24" fill="none" stroke="#3fb950" stroke-width="6"/>
+    <path d="M30 58 L50 78 L84 36" fill="none" stroke="#3fb950" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="248" y="160" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="92" font-weight="800" fill="#f0f6fc" letter-spacing="-2">Prove It</text>
+  <text x="252" y="212" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="30" font-weight="500" fill="#9198a1">Make the AI prove it before a human reads it</text>
+  <g transform="translate(1012,250)">
+    <rect x="0" y="0" width="176" height="40" rx="20" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+    <circle cx="24" cy="20" r="6" fill="#3fb950"/>
+    <text x="40" y="27" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" font-weight="600" fill="#f0f6fc">Built on Switch</text>
+  </g>
+</svg>

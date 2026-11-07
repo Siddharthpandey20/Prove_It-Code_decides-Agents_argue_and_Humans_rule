@@ -1,17 +1,39 @@
-# Tickets, reporter material and run evidence from local use
-work/
-# Agent credentials and the private Switch server's .env (tokens, passwords)
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Tools and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+.claude/settings.local.json
+**/.claude/settings.local.json
+
+# Local secrets: agent credentials, the private Switch server's .env
 .proveit/
 .env
 .env.*
-# Local logs can contain tokens; only redacted evidence under docs/evidence/ is committed
+
+# Local runs: tickets, reporter material, trial folders
+work/
+.proveit-trials/
+
+# Logs (they can hold tokens); redacted evidence in docs/evidence/ is committed
 *.log
 !docs/evidence/*.log
-# Personal Claude Code overrides
-.claude/settings.local.json
-**/.claude/settings.local.json
-__pycache__/
-*.pyc
+
+# Local working notes from the build
+AGENTS.md
+CLAUDE.md
+context.md
+docs/CHECKPOINT.md
+docs/blog-draft.md
+docs/outreach/
 LIVE-REPORT-2026-11-06.md
 TRUST-REPORT-2026-11-06.md
-.proveit-trials/

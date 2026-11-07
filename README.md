@@ -38,6 +38,7 @@
   <a href="#where-switch-fits"><b>Where Switch fits</b></a> ·
   <a href="#results-from-real-runs"><b>Results</b></a> ·
   <a href="#run-it-yourself"><b>Run it yourself</b></a> ·
+  <a href="#full-setup-in-switch-console-about-15-minutes"><b>Setup</b></a> ·
   <a href="#what-the-agents-can-and-cannot-touch"><b>Security model</b></a>
 </p>
 
@@ -82,7 +83,7 @@ Prove It lives inside a Switch server. Three agents from three different sources
 - The Reproducer and Skeptic use `owner-agents` addressing: only the maintainer who deployed the template can instruct them, and reporters can reach Intake alone. "Bypass permissions" stays off (`auto_approve: false`).
 - One template, [switch/prove-it.template.yaml](switch/prove-it.template.yaml), creates both agents, both rooms, the link, the instructions and the document in one deploy. [switch/prove-it.sqlparse.rooms.template.yaml](switch/prove-it.sqlparse.rooms.template.yaml) adds a second room pair for a second library, served by the same agents.
 
-**How to run it:** six steps in [Run it yourself](#run-it-yourself), with every detail in [docs/SETUP.md](docs/SETUP.md).
+**How to set it up and run it:** the complete seven-step setup is in [Full setup in Switch Console](#full-setup-in-switch-console-about-15-minutes) below.
 
 ## One report, end to end
 
@@ -307,16 +308,80 @@ The rehearsal ends with:
 REHEARSAL PASSED (both runs identical)
 ```
 
-**The full workflow in Switch**, tested on Windows 11 with Switch Console 0.40.1, Switch server 0.31.0, Claude Code 2.1.318, Codex 0.166.0, Docker 29.9.2 and Python 3.13.3:
+### Full setup in Switch Console (about 15 minutes)
 
-1. Install Switch Console, Docker, Claude Code and Codex, and sign in to both agents.
-2. Build the sandbox images: `python -m proveit build` (add `--target sqlparse` for the second library).
-3. Register Intake with Console's local Switch server: `python -m proveit.intake setup`.
-4. In Console, open Templates, paste [switch/prove-it.template.yaml](switch/prove-it.template.yaml), set the checkout folder and create it: both rooms, the link and both agents appear.
-5. Start Intake: `python -m proveit.intake run`.
-6. Post a report in `#proveit-intake` (or `python scripts/replay.py report 01`), then type `@prove-it-reproducer check R-001` in `#proveit-triage`.
+Tested on Windows 11 with Switch Console 0.40.1, Switch server 0.31.0, Claude Code 2.1.318, Codex 0.166.0, Docker 29.9.2 and Python 3.13.3. You need Docker running, Python 3.9+, Switch Console, and Claude Code and Codex installed.
 
-Step-by-step guide with Switch Trust setup: [docs/SETUP.md](docs/SETUP.md). Known Switch issues and their workarounds: [SETUP troubleshooting](docs/SETUP.md#troubleshooting).
+**1. Get the code and build the sandbox**
+
+```sh
+git clone https://github.com/akhilll0305/team-pikachu-switch-ai
+cd team-pikachu-switch-ai
+python -m proveit build                     # PyYAML 5.3.1 (vulnerable) and 5.4 (patched) images
+python -m proveit build --target sqlparse   # sqlparse 0.4.3 and 0.4.4 images, for the second room pair
+python scripts/rehearse.py                  # the whole flow offline, no Switch
+```
+
+**2. Start a Switch server.** In Switch Console: **Add a server → Run a server on this computer → Start**, and wait for **Running locally**. Open **Home → Messaging apps → Mattermost → Sign-in details… → Open in Mattermost** and sign in. Under **Settings → Agent providers**, confirm Claude Code and Codex both show **Signed in** (`claude auth login`, `codex login`).
+
+**3. Register the Intake agent.** Intake is our own agent on the Switch agent protocol, so this command registers it with Console's local server and opens it to everyone in its rooms:
+
+```sh
+python -m proveit.intake setup
+```
+
+Credentials are stored in `~/.proveit/`, outside the checkout. Use `--env-file` and `--api-url` for a server elsewhere, and `--overwrite` to re-register.
+
+**4. Deploy the template.** In Console open **Templates**, add a template from YAML and paste [switch/prove-it.template.yaml](switch/prove-it.template.yaml).
+
+- **Prove It checkout:** the folder you cloned. Select the box, press Ctrl+A and paste the path once; the **Preview** must show `<checkout>/agents/reproducer` and `<checkout>/agents/skeptic`.
+- **Reproducer runs on / Skeptic runs on** (Advanced): Claude Code and Codex by default. Keep them on different vendors.
+- Click **Create all**. You get `prove-it-reproducer`, `prove-it-skeptic` and a **Prove It** room group with `#proveit-intake` and `#proveit-triage`, linked as `triage`, with the room instructions and the `verdict-rules` and `scope-policy` documents. For the sqlparse rooms, add [switch/prove-it.sqlparse.rooms.template.yaml](switch/prove-it.sqlparse.rooms.template.yaml) the same way.
+
+Then, for each agent: confirm **Bypass permissions** is off, and trust its folder once so its lockdown applies (run `claude` in `agents/reproducer` and accept the trust prompt; run `codex` in `agents/skeptic` and trust the project).
+
+**5. Turn on Switch Trust.**
+
+1. Sign up at [app.switchagents.ai](https://app.switchagents.ai/).
+2. **Settings → Configurations → Guardrail policies → Add policy**, named `Prove It guard`. Turn on **Regex** for the **User** role only, Action **Block**, with these two patterns, and leave every other detector off (including Jailbreak, which blocks legitimate proofs):
+   ```
+   (?i)ignore\s+((all|your|previous)\s+)+(instructions|rules)
+   (?i)print (your )?env(ironment)?
+   ```
+3. **Settings → Admin → API keys → Create key** with Role **Editor**, and copy it.
+4. In Console, on the server's **Home** page, open **Switch Trust Integration** and set the endpoint `https://api.switchagents.ai`, the policy ID and the key. It shows **Monitoring Active** at once.
+
+**6. Run Intake** and leave it running:
+
+```sh
+python -m proveit.intake run
+```
+
+It prints `Intake is listening in #proveit-intake and the room it links to as 'triage'`.
+
+**7. Try it.** Post a report in `#proveit-intake`, or replay ours as your Mattermost user:
+
+```sh
+python scripts/replay.py report 01        # real CVE-2020-14343
+python scripts/replay.py report 02        # slop with no proof: Intake asks for one
+python scripts/replay.py followup 02      # the "proof"
+python scripts/replay.py report 03        # slop: billion laughs
+python scripts/replay.py report 04        # injection: blocked by Switch Trust
+```
+
+Then decide it in `#proveit-triage`:
+
+```
+@prove-it-reproducer check R-001
+@prove-it-reproducer run R-001 on the patched build
+@prove-it-skeptic review R-001
+@prove-it-intake override R-001 patched build checked
+@prove-it-intake escalate R-001 confirmed, CVE-2020-14343
+@prove-it-intake close R-002 reason=not_reproduced safe_load refused the tag
+@prove-it-intake tally
+```
+
+The full guide, with every Console click, is [docs/SETUP.md](docs/SETUP.md). `python -m proveit doctor` checks Docker, the images, Intake, the rooms, the maintainers and the agents' folders and says what to fix, and every Switch issue we met has a tested workaround in [SETUP troubleshooting](docs/SETUP.md#troubleshooting).
 
 <details>
 <summary><b>Headless Switch server, no Console needed</b></summary>

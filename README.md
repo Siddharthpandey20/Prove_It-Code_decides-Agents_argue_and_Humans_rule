@@ -267,13 +267,11 @@ stateDiagram-v2
 
 *Times come from the Mattermost post timestamps in [room-posts.md](docs/evidence/live-trial-review4-2026-11-07/room-posts.md). Intake refused the Skeptic's concur 4 times while its own dispute stood, and the reporter limit engaged after 2 failed proofs and was lifted by the maintainer.*
 
-```mermaid
-xychart-beta
-    title "Seconds from check to Skeptic verdict vs an engineer's first pass"
-    x-axis ["R-001 live", "R-004 live", "Engineer, 30 min", "Engineer, 60 min"]
-    y-axis "Seconds" 0 --> 3600
-    bar [75, 127, 1800, 3600]
-```
+| First pass on a report | Time | Against a 30 min engineer pass | Against a 60 min engineer pass |
+| --- | --- | --- | --- |
+| R-001, PyYAML CVE, check to Skeptic verdict | 75 s | 24× faster | 48× faster |
+| R-004, sqlparse CVE, check to Skeptic verdict | 127 s | 14× faster | 28× faster |
+| Senior security engineer, typical report | 30–60 min | | |
 
 *Agent times from the live room posts; the 30–60 minute engineer figure is Elastic's, from [Elastic Security Labs](https://www.elastic.co/security-labs/ai-vulnerability-triage-bug-bounty-hackerone).*
 

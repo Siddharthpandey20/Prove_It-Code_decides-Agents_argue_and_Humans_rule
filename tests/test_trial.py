@@ -10,7 +10,10 @@ from types import SimpleNamespace
 from pathlib import Path
 from unittest import mock
 
-import yaml
+try:  # test-only dependency: the project itself is standard library only
+    import yaml
+except ImportError:  # the Windows CI job runs without it on purpose
+    yaml = None
 
 from proveit import config, doctor, intake, targets, trial
 
@@ -91,6 +94,7 @@ class Preparation(unittest.TestCase):
                     intake.cmd_setup(SimpleNamespace(**args))
             register.assert_not_called()
 
+    @unittest.skipIf(yaml is None, "needs PyYAML to parse the templates (pip install pyyaml); CI's Linux job installs it")
     def test_shared_agent_instructions_are_target_neutral(self):
         template = yaml.safe_load((ROOT / "switch/prove-it.template.yaml").read_text(encoding="utf-8"))
         instructions = {agent["name"]: agent["instructions"] for agent in template["agents"]}
@@ -105,6 +109,7 @@ class Preparation(unittest.TestCase):
         self.assertIn("this room's scope-policy doc", skeptic)
         self.assertIn("library_frames_recorded", skeptic)
         self.assertIn("code_execution_proven_by_marker", skeptic)
+    @unittest.skipIf(yaml is None, "needs PyYAML to parse the templates (pip install pyyaml); CI's Linux job installs it")
     def test_generated_templates_and_settings_keep_isolation_and_lockdowns(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

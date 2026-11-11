@@ -9,7 +9,7 @@ Managed Claude Code (Reproducer) and Codex (Skeptic) agents in Switch Console, w
 | Reporter account | `reporter_test` |
 | Room pairs | `review4-proveit-intake` / `review4-proveit-triage` (PyYAML); `review4-sqlparse-intake` / `review4-sqlparse-triage` (sqlparse) |
 
-This folder holds the results that were **not yet in `main`**. Main's `docs/evidence/live-trial-2026-11-07-status.md` describes an earlier, partial attempt; it still lists the advisory pack, the reporter limit and sqlparse as unverified. The posts and files here are the later managed-agent results.
+This folder holds the final managed-agent results: the advisory pack, the reporter limit and the sqlparse rooms, all live.
 
 ## What is here
 

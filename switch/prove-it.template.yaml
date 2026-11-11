@@ -23,7 +23,7 @@ params:
   directory:
     type: directory
     label: Prove It checkout
-    description: The folder where you cloned team-pikachu-switch-ai. Each agent works in its own subfolder of agents/.
+    description: The folder where you cloned Prove_It-Code_decides-Agents_argue_and_Humans_rule. Each agent works in its own subfolder of agents/.
   reproducer_provider:
     type: provider
     label: Reproducer runs on

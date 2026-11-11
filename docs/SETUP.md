@@ -7,8 +7,8 @@ On Apple silicon Macs, Docker Desktop or a Docker-compatible Colima runtime work
 ## 1. Get the code and build the sandbox
 
 ```sh
-git clone https://github.com/akhilll0305/team-pikachu-switch-ai
-cd team-pikachu-switch-ai
+git clone https://github.com/Siddharthpandey20/Prove_It-Code_decides-Agents_argue_and_Humans_rule
+cd Prove_It-Code_decides-Agents_argue_and_Humans_rule
 python -m proveit build
 python -m unittest discover -s tests       # 325 tests; Docker running; duration depends on host
 python scripts/rehearse.py                 # the whole demo offline, no Switch

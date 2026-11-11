@@ -9,7 +9,7 @@
 <p align="center"><b>AI spam is drowning open source. Prove It makes the AI prove its bug report before a human reads it.</b></p>
 
 <p align="center">
-  <a href="https://github.com/akhilll0305/team-pikachu-switch-ai/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/akhilll0305/team-pikachu-switch-ai/ci.yml?branch=main&style=flat-square&label=CI"></a>
+  <a href="https://github.com/Siddharthpandey20/Prove_It-Code_decides-Agents_argue_and_Humans_rule/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Siddharthpandey20/Prove_It-Code_decides-Agents_argue_and_Humans_rule/ci.yml?branch=main&style=flat-square&label=CI"></a>
   <a href="#verified"><img alt="325 tests passing" src="https://img.shields.io/badge/tests-325%20passing-2ea44f?style=flat-square"></a>
   <a href="#verified"><img alt="Live checks 35/35" src="https://img.shields.io/badge/live%20checks-35%2F35-2ea44f?style=flat-square"></a>
   <a href="LICENSE"><img alt="License MIT" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
@@ -281,7 +281,7 @@ stateDiagram-v2
 | Measure | Result | Source |
 | --- | --- | --- |
 | Tests | 325 passing, 0 failures | [docs/SETUP.md](docs/SETUP.md), CI |
-| CI on `main` | 5 of 5 pushes green, Linux and Windows jobs | [Actions](https://github.com/akhilll0305/team-pikachu-switch-ai/actions/workflows/ci.yml) |
+| CI on `main` | every push green, Linux and Windows jobs | [Actions](https://github.com/Siddharthpandey20/Prove_It-Code_decides-Agents_argue_and_Humans_rule/actions/workflows/ci.yml) |
 | Headless Switch live checks | 35 / 35 passed | [live-checks log](docs/evidence/live-checks-2026-11-07-headless.log) |
 | Headless Switch end-to-end | `E2E PASSED` on Windows and macOS | [Windows](docs/evidence/e2e-2026-11-05.log), [macOS](docs/evidence/e2e-2026-11-05-macos.log) |
 | PyYAML rehearsal, run twice | identical, digest `d7ad7ae2c8b6294c` | [fix-pass log](docs/evidence/fix-pass-2026-11-07-windows.log) |
@@ -315,8 +315,8 @@ Tested on Windows 11 with Switch Console 0.40.1, Switch server 0.31.0, Claude Co
 **1. Get the code and build the sandbox**
 
 ```sh
-git clone https://github.com/akhilll0305/team-pikachu-switch-ai
-cd team-pikachu-switch-ai
+git clone https://github.com/Siddharthpandey20/Prove_It-Code_decides-Agents_argue_and_Humans_rule
+cd Prove_It-Code_decides-Agents_argue_and_Humans_rule
 python -m proveit build                     # PyYAML 5.3.1 (vulnerable) and 5.4 (patched) images
 python -m proveit build --target sqlparse   # sqlparse 0.4.3 and 0.4.4 images, for the second room pair
 python scripts/rehearse.py                  # the whole flow offline, no Switch
@@ -474,7 +474,7 @@ Python (standard library only), Docker, YAML templates for Switch, Mermaid, GitH
 | Switch Trust in front of intake | Live: injection report blocked before any agent; real reports untouched | [Trust log](docs/evidence/live-trust-2026-11-06-windows.log) |
 | Disputes, advisory pack, reporter limit, separate accounts, sqlparse rooms | Headless Switch 0.31.0, 35 / 35 checks | [live-checks log](docs/evidence/live-checks-2026-11-07-headless.log) |
 | Intake over real Switch rooms and Mattermost | Headless end-to-end, Windows and macOS | [e2e log](docs/evidence/e2e-2026-11-05.log) |
-| Sandbox isolation, audit cheats, canary, state machine | 325 tests offline and in CI | [tests/](tests), [CI](https://github.com/akhilll0305/team-pikachu-switch-ai/actions/workflows/ci.yml) |
+| Sandbox isolation, audit cheats, canary, state machine | 325 tests offline and in CI | [tests/](tests), [CI](https://github.com/Siddharthpandey20/Prove_It-Code_decides-Agents_argue_and_Humans_rule/actions/workflows/ci.yml) |
 | Deterministic outcomes | Both rehearsals identical across runs | [fix-pass log](docs/evidence/fix-pass-2026-11-07-windows.log) |
 
 ## Contributing back to Switch
